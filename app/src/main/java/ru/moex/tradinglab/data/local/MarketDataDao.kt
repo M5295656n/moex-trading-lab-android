@@ -15,8 +15,60 @@ interface MarketDataDao {
     @Query("SELECT * FROM market_instruments WHERE instrumentId = :instrumentId LIMIT 1")
     suspend fun getInstrument(instrumentId: String): MarketInstrumentEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertInstruments(items: List<MarketInstrumentEntity>)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertInstrumentsIfAbsent(items: List<MarketInstrumentEntity>)
+
+    @Query("""
+        UPDATE market_instruments SET
+            secId = :secId,
+            name = :name,
+            shortName = :shortName,
+            isin = :isin,
+            boardId = :boardId,
+            lotSize = :lotSize,
+            currency = :currency,
+            market = :market,
+            source = :source,
+            rawFieldsJson = :rawFieldsJson,
+            fetchedAtEpochMillis = :fetchedAtEpochMillis
+        WHERE instrumentId = :instrumentId
+    """)
+    suspend fun updateInstrument(
+        instrumentId: String,
+        secId: String,
+        name: String,
+        shortName: String?,
+        isin: String?,
+        boardId: String?,
+        lotSize: Double?,
+        currency: String?,
+        market: String,
+        source: String,
+        rawFieldsJson: String?,
+        fetchedAtEpochMillis: Long
+    )
+
+    @Transaction
+    suspend fun upsertInstruments(items: List<MarketInstrumentEntity>) {
+        if (items.isEmpty()) return
+        insertInstrumentsIfAbsent(items)
+        items.forEach { item ->
+            updateInstrument(
+                instrumentId = item.instrumentId,
+                secId = item.secId,
+                name = item.name,
+                shortName = item.shortName,
+                isin = item.isin,
+                boardId = item.boardId,
+                lotSize = item.lotSize,
+                currency = item.currency,
+                market = item.market,
+                source = item.source,
+                rawFieldsJson = item.rawFieldsJson,
+                fetchedAtEpochMillis = item.fetchedAtEpochMillis
+            )
+        }
+    }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertCandles(items: List<CandleEntity>)
