@@ -6,7 +6,12 @@ import java.util.LinkedHashMap
 enum class MoexMarket(val catalogEndpoint: String) {
     SHARES("engines/stock/markets/shares/securities"),
     FUTURES("engines/futures/markets/forts/securities"),
-    INDICES("engines/stock/markets/index/securities")
+    INDICES("engines/stock/markets/index/securities");
+
+    fun candlesEndpoint(secId: String): String {
+        require(secId.matches(Regex("[A-Za-z0-9._-]+"))) { "Invalid MOEX SECID" }
+        return catalogEndpoint + "/" + secId + "/candles"
+    }
 }
 
 data class IssInstrument(
@@ -85,6 +90,7 @@ class MoexIssDataRepository(
         require(pageSize in 1..MAX_PAGE_SIZE) { "pageSize must be between 1 and $MAX_PAGE_SIZE" }
         require(maxPages > 0) { "maxPages must be positive" }
 
+        // Keep distinct boards: canonical identity includes market + board + SECID.
         val instrumentsById = LinkedHashMap<String, IssInstrument>()
         val starts = mutableListOf<Int>()
         var skippedRows = 0
@@ -107,7 +113,10 @@ class MoexIssDataRepository(
                 val instrument = IssRowMapper.instrument(row, market)
                 if (instrument == null) {
                     skippedRows++
-                } else if (instrumentsById.putIfAbsent(instrument.secId, instrument) == null) {
+                } else if (instrumentsById.putIfAbsent(
+                    instrument.market.name + ":" + instrument.boardId.orEmpty() + ":" + instrument.secId,
+                    instrument
+                ) == null) {
                     addedOnPage++
                 }
             }
