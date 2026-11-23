@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - "feature/moex-calendar-live-validation"
+      - "feature/moex-calendar-access-research"
+      - "feature/moex-iss-data-foundation"
   workflow_dispatch:
 
 permissions:
@@ -68,3 +70,174 @@ jobs:
           status="$(curl --insecure --silent --show-error -o /tmp/apim.json -w '%{http_code}' \
             "https://apim.moex.com/iss/calendars/stock.json?from=2026-11-20&till=2026-11-30")" || status="000"
           echo "APIM without token: HTTP $status"
+
+      - name: Probe public SecuritiesListing page, ISS tables and archive index
+        shell: bash
+        run: |
+          set -u
+          probe() {
+            local label="$1"
+            local url="$2"
+            local body="/tmp/moex-listing-$RANDOM.body"
+            local meta
+            meta="$(curl --insecure --silent --show-error --location --max-time 30 \
+              -H 'User-Agent: Mozilla/5.0 MOEX-Trading-Lab-Android/1.0' \
+              -o "$body" -w '%{http_code}|%{content_type}|%{size_download}|%{url_effective}' "$url")" || meta="000|transport-error"
+            echo "$label: $meta"
+            echo "BODY_PREFIX $(head -c 180 "$body" | tr '\n' ' ')"
+            if [[ "$label" == "public SecuritiesListing HTML" ]]; then
+              echo "LISTING_LINKS"
+              grep -Eoi 'href=["'\''][^"'\'']+["'\'']' "$body" | grep -Ei 'securit|listing|\.zip|\.csv|\.xml' | head -40 || true
+            fi
+            if [[ "$label" == "latest archive index JSON" || "$label" == "ISS securitieslisting JSON" ]]; then
+              jq -c '.[1] // .' "$body" 2>/dev/null | head -c 5000 || true
+              echo
+            fi
+          }
+          probe "public SecuritiesListing HTML" "https://www.moex.com/ru/SecuritiesListing.aspx"
+          probe "ISS securitieslisting JSON" "https://iss.moex.com/iss/statistics/engines/stock/securitieslisting.json?iss.meta=off"
+          probe "ISS securitieslisting CSV" "https://iss.moex.com/iss/statistics/engines/stock/securitieslisting.csv?iss.meta=off"
+          probe "latest archive index JSON" "https://iss.moex.com/iss/archives/files/securities_listing_latest.json?iss.meta=off"
+          probe "latest archive index XML" "https://iss.moex.com/iss/archives/files/securities_listing_latest.xml"
+
+      - name: Download and inspect the actual SecuritiesListing ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          index=/tmp/securities_listing_latest.json
+          curl --insecure --fail --silent --show-error --location --max-time 60 \
+            -H 'Accept: application/json' -H 'User-Agent: Mozilla/5.0 MOEX-Trading-Lab-Android/1.0' \
+            'https://iss.moex.com/iss/archives/files/securities_listing_latest.json?iss.meta=off' -o "$index"
+          echo "INDEX_BYTES=$(wc -c < "$index")"
+          echo "INDEX_JSON=$(jq -c '.' "$index" | head -c 12000)"
+          python3 - <<'PY'
+          import json, re, sys
+          from urllib.parse import urljoin
+          data=json.load(open('/tmp/securities_listing_latest.json', encoding='utf-8'))
+          found=[('public SecuritiesListing page','https://iss.moex.com/file/stock_boardsecid/SL.ZIP')]
+          def walk(x, path='$'):
+              if isinstance(x, dict):
+                  for k,v in x.items():
+                      walk(v, path+'.'+str(k))
+              elif isinstance(x, list):
+                  for i,v in enumerate(x): walk(v, f'{path}[{i}]')
+              elif isinstance(x, str) and re.search(r'\.zip(?:\?|$)', x, re.I):
+                  found.append((path,x))
+          walk(data)
+          print('ZIP_CANDIDATES=', json.dumps(found, ensure_ascii=False))
+          if not found:
+              print('ERROR: archive index contains no explicit ZIP URL', file=sys.stderr)
+              sys.exit(2)
+          base='https://iss.moex.com'
+          urls=[]
+          for _,u in found:
+              urls.append(urljoin(base,u))
+          open('/tmp/securities_listing_zip_urls.txt','w').write('\n'.join(dict.fromkeys(urls)))
+          PY
+          while IFS= read -r url; do
+            [ -n "$url" ] || continue
+            echo "ARCHIVE_URL=$url"
+            archive=/tmp/securities_listing.zip
+            meta="$(curl --insecure --fail --silent --show-error --location --max-time 120 \
+              -H 'User-Agent: Mozilla/5.0 MOEX-Trading-Lab-Android/1.0' \
+              -o "$archive" -w '%{http_code}|%{content_type}|%{size_download}|%{url_effective}' "$url")"
+            echo "ARCHIVE_HTTP_META=$meta"
+            file "$archive"
+            unzip -t "$archive"
+            python3 - <<'PY'
+          import zipfile, csv, io, collections, datetime, json, os, re
+          p='/tmp/securities_listing.zip'
+          with zipfile.ZipFile(p) as z:
+              infos=z.infolist()
+              print('ZIP_MEMBERS=', json.dumps([{'name':i.filename,'bytes':i.file_size,'compressed':i.compress_size} for i in infos], ensure_ascii=False))
+              for info in infos:
+                  if info.is_dir(): continue
+                  raw=z.read(info)
+                  print(f'FILE={info.filename} BYTES={len(raw)} PREFIX={raw[:180]!r}')
+                  if info.filename.lower().endswith('.dbf'):
+                      import struct
+                      header=raw[:32]
+                      declared=struct.unpack('<I',header[4:8])[0]
+                      header_len=struct.unpack('<H',header[8:10])[0]
+                      record_len=struct.unpack('<H',header[10:12])[0]
+                      fields=[]
+                      pos=32
+                      while pos < header_len and raw[pos] != 0x0D:
+                          desc=raw[pos:pos+32]
+                          name=desc[:11].decode('ascii','replace').rstrip(chr(0)).strip()
+                          typ=chr(desc[11])
+                          size=desc[16]
+                          decimals=desc[17]
+                          fields.append((name,typ,size,decimals))
+                          pos+=32
+                      print('DBF_HEADER=',json.dumps({'version':header[0],'declared_records':declared,'header_bytes':header_len,'record_bytes':record_len,'fields':fields},ensure_ascii=False))
+                      actual=(len(raw)-header_len)//record_len if record_len else 0
+                      print('DBF_PHYSICAL_RECORDS=',actual)
+                      rows=[]; boards=set(); securities=set(); dates=[]; keys=collections.Counter()
+                      for i in range(min(declared,actual)):
+                          rec=raw[header_len+i*record_len:header_len+(i+1)*record_len]
+                          if not rec or rec[0:1]==b'*': continue
+                          offset=1; row={}
+                          for name,typ,size,decimals in fields:
+                              value=rec[offset:offset+size]; offset+=size
+                              if typ=='D':
+                                  v=value.decode('ascii','ignore').strip()
+                                  v=f'{v[:4]}-{v[4:6]}-{v[6:8]}' if len(v)==8 and v.isdigit() else v
+                              else:
+                                  v=value.decode('cp866','replace').strip()
+                              row[name]=v
+                          rows.append(row)
+                          d=row.get('TRADEDATE','')
+                          b=row.get('BOARDID','')
+                          s=row.get('SECURITYID','')
+                          if d: dates.append(d)
+                          if b: boards.add(b)
+                          if s: securities.add(s)
+                          if d and b and s: keys[(d,b,s)]+=1
+                      print('DBF_ACTIVE_ROWS=',len(rows),'DATE_MIN=',min(dates) if dates else None,'DATE_MAX=',max(dates) if dates else None)
+                      print('DBF_UNIQUE_BOARD_IDS=',len(boards),sorted(boards))
+                      print('DBF_UNIQUE_SECURITY_IDS=',len(securities))
+                      print('DBF_DUPLICATE_DATE_BOARD_SECURITY_KEYS=',sum(1 for v in keys.values() if v>1))
+                      print('DBF_ROW_SAMPLE=',json.dumps(rows[:5],ensure_ascii=False))
+                      if not dates or not boards or not securities:
+                          raise SystemExit('DBF_VALIDATION_FAILED: parsed date/board/security aggregates must be non-empty')
+                      if len(rows) != declared:
+                          raise SystemExit(f'DBF_VALIDATION_FAILED: active rows {len(rows)} differ from declared rows {declared}')
+                      print('DBF_VALIDATION_ASSERTIONS=PASS')
+                      continue
+                  if not (info.filename.lower().endswith(('.csv','.txt','.tsv'))): continue
+                  text=None
+                  for enc in ('utf-8-sig','cp1251','utf-8'):
+                      try: text=raw.decode(enc); print('ENCODING=',enc); break
+                      except UnicodeDecodeError: pass
+                  if text is None:
+                      print('UNSUPPORTED_TEXT_ENCODING'); continue
+                  sample=text[:8192]
+                  try: dialect=csv.Sniffer().sniff(sample, delimiters=';,\t|')
+                  except csv.Error: dialect=csv.excel; dialect.delimiter=';'
+                  rows=csv.DictReader(io.StringIO(text), dialect=dialect)
+                  print('CSV_DELIMITER=',repr(dialect.delimiter),'CSV_HEADERS=',json.dumps(rows.fieldnames,ensure_ascii=False))
+                  count=0; dates=[]; boards=set(); securities=set(); keys=collections.Counter()
+                  for row in rows:
+                      count+=1
+                      norm={str(k).strip().lower():v for k,v in row.items() if k is not None}
+                      for k in ('tradedate','trdsesdate','date','trade_date'):
+                          v=norm.get(k)
+                          if v:
+                              dates.append(v.strip()); break
+                      b=norm.get('boardid') or norm.get('board_id')
+                      s=norm.get('securityid') or norm.get('secid') or norm.get('security_id')
+                      if b: boards.add(b.strip())
+                      if s: securities.add(s.strip())
+                      if b and s:
+                          d=next((norm.get(k) for k in ('tradedate','trdsesdate','date','trade_date') if norm.get(k)), '')
+                          keys[(d.strip(),b.strip(),s.strip())]+=1
+                  print('CSV_ROWS=',count,'DATE_MIN=',min(dates) if dates else None,'DATE_MAX=',max(dates) if dates else None)
+                  print('UNIQUE_BOARD_IDS=',len(boards),sorted(boards)[:100])
+                  print('UNIQUE_SECURITY_IDS=',len(securities))
+                  print('DUPLICATE_DATE_BOARD_SECURITY_KEYS=',sum(1 for v in keys.values() if v>1))
+                  print('KEY_SAMPLE=',json.dumps([{'key':k,'count':v} for k,v in list(keys.items())[:10]],ensure_ascii=False))
+          PY
+            break
+          done < /tmp/securities_listing_zip_urls.txt
+          echo "ZIP_INSPECTION_COMPLETE"
