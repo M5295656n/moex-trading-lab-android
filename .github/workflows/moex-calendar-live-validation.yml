@@ -99,3 +99,94 @@ jobs:
           probe "ISS securitieslisting CSV" "https://iss.moex.com/iss/statistics/engines/stock/securitieslisting.csv?iss.meta=off"
           probe "latest archive index JSON" "https://iss.moex.com/iss/archives/files/securities_listing_latest.json?iss.meta=off"
           probe "latest archive index XML" "https://iss.moex.com/iss/archives/files/securities_listing_latest.xml"
+
+      - name: Download and inspect the actual SecuritiesListing ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          index=/tmp/securities_listing_latest.json
+          curl --fail --silent --show-error --location --max-time 60 \
+            -H 'Accept: application/json' -H 'User-Agent: Mozilla/5.0 MOEX-Trading-Lab-Android/1.0' \
+            'https://iss.moex.com/iss/archives/files/securities_listing_latest.json?iss.meta=off' -o "$index"
+          echo "INDEX_BYTES=$(wc -c < "$index")"
+          echo "INDEX_JSON=$(jq -c '.' "$index" | head -c 12000)"
+          python3 - <<'PY'
+          import json, re, sys
+          from urllib.parse import urljoin
+          data=json.load(open('/tmp/securities_listing_latest.json', encoding='utf-8'))
+          found=[]
+          def walk(x, path='$'):
+              if isinstance(x, dict):
+                  for k,v in x.items():
+                      walk(v, path+'.'+str(k))
+              elif isinstance(x, list):
+                  for i,v in enumerate(x): walk(v, f'{path}[{i}]')
+              elif isinstance(x, str) and re.search(r'\.zip(?:\?|$)', x, re.I):
+                  found.append((path,x))
+          walk(data)
+          print('ZIP_CANDIDATES=', json.dumps(found, ensure_ascii=False))
+          if not found:
+              print('ERROR: archive index contains no explicit ZIP URL', file=sys.stderr)
+              sys.exit(2)
+          base='https://iss.moex.com'
+          urls=[]
+          for _,u in found:
+              urls.append(urljoin(base,u))
+          open('/tmp/securities_listing_zip_urls.txt','w').write('\n'.join(dict.fromkeys(urls)))
+          PY
+          while IFS= read -r url; do
+            [ -n "$url" ] || continue
+            echo "ARCHIVE_URL=$url"
+            archive=/tmp/securities_listing.zip
+            meta="$(curl --fail --silent --show-error --location --max-time 120 \
+              -H 'User-Agent: Mozilla/5.0 MOEX-Trading-Lab-Android/1.0' \
+              -o "$archive" -w '%{http_code}|%{content_type}|%{size_download}|%{url_effective}' "$url")"
+            echo "ARCHIVE_HTTP_META=$meta"
+            file "$archive"
+            unzip -t "$archive"
+            python3 - <<'PY'
+          import zipfile, csv, io, collections, datetime, json, os, re
+          p='/tmp/securities_listing.zip'
+          with zipfile.ZipFile(p) as z:
+              infos=z.infolist()
+              print('ZIP_MEMBERS=', json.dumps([{'name':i.filename,'bytes':i.file_size,'compressed':i.compress_size} for i in infos], ensure_ascii=False))
+              for info in infos:
+                  if info.is_dir(): continue
+                  raw=z.read(info)
+                  print(f'FILE={info.filename} BYTES={len(raw)} PREFIX={raw[:180]!r}')
+                  if not (info.filename.lower().endswith(('.csv','.txt','.tsv'))): continue
+                  text=None
+                  for enc in ('utf-8-sig','cp1251','utf-8'):
+                      try: text=raw.decode(enc); print('ENCODING=',enc); break
+                      except UnicodeDecodeError: pass
+                  if text is None:
+                      print('UNSUPPORTED_TEXT_ENCODING'); continue
+                  sample=text[:8192]
+                  try: dialect=csv.Sniffer().sniff(sample, delimiters=';,\t|')
+                  except csv.Error: dialect=csv.excel; dialect.delimiter=';'
+                  rows=csv.DictReader(io.StringIO(text), dialect=dialect)
+                  print('CSV_DELIMITER=',repr(dialect.delimiter),'CSV_HEADERS=',json.dumps(rows.fieldnames,ensure_ascii=False))
+                  count=0; dates=[]; boards=set(); securities=set(); keys=collections.Counter()
+                  for row in rows:
+                      count+=1
+                      norm={str(k).strip().lower():v for k,v in row.items() if k is not None}
+                      for k in ('tradedate','trdsesdate','date','trade_date'):
+                          v=norm.get(k)
+                          if v:
+                              dates.append(v.strip()); break
+                      b=norm.get('boardid') or norm.get('board_id')
+                      s=norm.get('securityid') or norm.get('secid') or norm.get('security_id')
+                      if b: boards.add(b.strip())
+                      if s: securities.add(s.strip())
+                      if b and s:
+                          d=next((norm.get(k) for k in ('tradedate','trdsesdate','date','trade_date') if norm.get(k)), '')
+                          keys[(d.strip(),b.strip(),s.strip())]+=1
+                  print('CSV_ROWS=',count,'DATE_MIN=',min(dates) if dates else None,'DATE_MAX=',max(dates) if dates else None)
+                  print('UNIQUE_BOARD_IDS=',len(boards),sorted(boards)[:100])
+                  print('UNIQUE_SECURITY_IDS=',len(securities))
+                  print('DUPLICATE_DATE_BOARD_SECURITY_KEYS=',sum(1 for v in keys.values() if v>1))
+                  print('KEY_SAMPLE=',json.dumps([{'key':k,'count':v} for k,v in list(keys.items())[:10]],ensure_ascii=False))
+            PY
+            break
+          done < /tmp/securities_listing_zip_urls.txt
+          echo "ZIP_INSPECTION_COMPLETE"
