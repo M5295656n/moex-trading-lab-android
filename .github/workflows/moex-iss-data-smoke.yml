@@ -1,0 +1,38 @@
+name: MOEX ISS catalog and history smoke test
+
+on:
+  push:
+    branches:
+      - "feature/moex-catalog-history-loader"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  iss-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check catalog endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          check_table() {
+            local endpoint="$1"
+            local table="$2"
+            local response
+            response="$(curl --fail --silent --show-error --retry 2 "https://iss.moex.com/iss/${endpoint}.json?iss.meta=off&iss.json=extended&iss.only=${table}")"
+            echo "$response" | jq -e --arg table "$table" '.[1][$table] | type == "array"' >/dev/null
+            echo "OK: $endpoint -> $table"
+          }
+          check_table "engines/stock/markets/shares/securities" "securities"
+          check_table "engines/futures/markets/forts/securities" "securities"
+          check_table "statistics/engines/stock/markets/index/securities" "securities"
+
+      - name: Check paginated candle endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error --retry 2 "https://iss.moex.com/iss/engines/stock/markets/shares/securities/SBER/candles.json?iss.meta=off&iss.json=extended&from=2026-11-01&till=2026-11-23&interval=24&start=0&limit=5")"
+          echo "$response" | jq -e '.[1].candles | type == "array"' >/dev/null
+          echo "OK: SBER daily candles with start/limit pagination"
