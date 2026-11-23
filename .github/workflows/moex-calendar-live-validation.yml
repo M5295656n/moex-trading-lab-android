@@ -164,7 +164,7 @@ jobs:
                       pos=32
                       while pos < header_len and raw[pos] != 0x0D:
                           desc=raw[pos:pos+32]
-                          name=desc[:11].decode('ascii','replace').replace('\\x00','').strip()
+                          name=desc[:11].decode('ascii','replace').rstrip(chr(0)).strip()
                           typ=chr(desc[11])
                           size=desc[16]
                           decimals=desc[17]
@@ -199,6 +199,11 @@ jobs:
                       print('DBF_UNIQUE_SECURITY_IDS=',len(securities))
                       print('DBF_DUPLICATE_DATE_BOARD_SECURITY_KEYS=',sum(1 for v in keys.values() if v>1))
                       print('DBF_ROW_SAMPLE=',json.dumps(rows[:5],ensure_ascii=False))
+                      if not dates or not boards or not securities:
+                          raise SystemExit('DBF_VALIDATION_FAILED: parsed date/board/security aggregates must be non-empty')
+                      if len(rows) != declared:
+                          raise SystemExit(f'DBF_VALIDATION_FAILED: active rows {len(rows)} differ from declared rows {declared}')
+                      print('DBF_VALIDATION_ASSERTIONS=PASS')
                       continue
                   if not (info.filename.lower().endswith(('.csv','.txt','.tsv'))): continue
                   text=None
