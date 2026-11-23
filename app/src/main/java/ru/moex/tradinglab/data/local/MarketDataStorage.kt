@@ -16,6 +16,13 @@ class MarketDataStorage(
         )
     }
 
+    suspend fun saveInstrument(
+        instrument: ru.moex.tradinglab.data.remote.IssInstrument,
+        fetchedAtEpochMillis: Long = System.currentTimeMillis()
+    ) {
+        dao.upsertInstruments(listOf(MarketDataEntityMapper.instrument(instrument, fetchedAtEpochMillis)))
+    }
+
     suspend fun saveHistory(
         instrumentId: String,
         intervalMinutes: Int,
