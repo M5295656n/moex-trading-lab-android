@@ -70,3 +70,32 @@ jobs:
           status="$(curl --insecure --silent --show-error -o /tmp/apim.json -w '%{http_code}' \
             "https://apim.moex.com/iss/calendars/stock.json?from=2026-11-20&till=2026-11-30")" || status="000"
           echo "APIM without token: HTTP $status"
+
+      - name: Probe public SecuritiesListing page, ISS tables and archive index
+        shell: bash
+        run: |
+          set -u
+          probe() {
+            local label="$1"
+            local url="$2"
+            local body="/tmp/moex-listing-$RANDOM.body"
+            local meta
+            meta="$(curl --insecure --silent --show-error --location --max-time 30 \
+              -H 'User-Agent: Mozilla/5.0 MOEX-Trading-Lab-Android/1.0' \
+              -o "$body" -w '%{http_code}|%{content_type}|%{size_download}|%{url_effective}' "$url")" || meta="000|transport-error"
+            echo "$label: $meta"
+            echo "BODY_PREFIX $(head -c 180 "$body" | tr '\n' ' ')"
+            if [[ "$label" == "public SecuritiesListing HTML" ]]; then
+              echo "LISTING_LINKS"
+              grep -Eoi 'href=["'\''][^"'\'']+["'\'']' "$body" | grep -Ei 'securit|listing|\.zip|\.csv|\.xml' | head -40 || true
+            fi
+            if [[ "$label" == "latest archive index JSON" || "$label" == "ISS securitieslisting JSON" ]]; then
+              jq -c '.[1] // .' "$body" 2>/dev/null | head -c 5000 || true
+              echo
+            fi
+          }
+          probe "public SecuritiesListing HTML" "https://www.moex.com/ru/SecuritiesListing.aspx"
+          probe "ISS securitieslisting JSON" "https://iss.moex.com/iss/statistics/engines/stock/securitieslisting.json?iss.meta=off"
+          probe "ISS securitieslisting CSV" "https://iss.moex.com/iss/statistics/engines/stock/securitieslisting.csv?iss.meta=off"
+          probe "latest archive index JSON" "https://iss.moex.com/iss/archives/files/securities_listing_latest.json?iss.meta=off"
+          probe "latest archive index XML" "https://iss.moex.com/iss/archives/files/securities_listing_latest.xml"
