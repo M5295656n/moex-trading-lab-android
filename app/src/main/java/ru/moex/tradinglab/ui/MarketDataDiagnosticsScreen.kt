@@ -47,19 +47,27 @@ fun MarketDataDiagnosticsScreen(
     val messages = remember { mutableStateMapOf<String, String>() }
     val scope = rememberCoroutineScope()
 
-    fun loadCatalog(market: MoexMarket) {
+    suspend fun performCatalogLoad(market: MoexMarket) {
         if (busy[market.name] == true) return
+        busy[market.name] = true
+        messages.remove(market.name)
+        try {
+            val result = sync.syncCatalog(market)
+            messages[market.name] = "Получено инструментов: ${result.instruments.size}. Страниц: ${result.pageCount}."
+        } catch (error: Exception) {
+            messages[market.name] = "Ошибка загрузки: ${error.message ?: error.javaClass.simpleName}"
+        } finally {
+            busy[market.name] = false
+        }
+    }
+
+    fun loadCatalog(market: MoexMarket) {
+        scope.launch { performCatalogLoad(market) }
+    }
+
+    fun loadAllCatalogs() {
         scope.launch {
-            busy[market.name] = true
-            messages.remove(market.name)
-            try {
-                val result = sync.syncCatalog(market)
-                messages[market.name] = "Получено инструментов: ${result.instruments.size}. Страниц: ${result.pageCount}."
-            } catch (error: Exception) {
-                messages[market.name] = "Ошибка загрузки: ${error.message ?: error.javaClass.simpleName}"
-            } finally {
-                busy[market.name] = false
-            }
+            MoexMarket.entries.forEach { market -> performCatalogLoad(market) }
         }
     }
 
@@ -85,7 +93,7 @@ fun MarketDataDiagnosticsScreen(
                 )
                 OutlinedButton(
                     onClick = {
-                        MoexMarket.entries.forEach(::loadCatalog)
+                        loadAllCatalogs()
                     },
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
                 ) {
