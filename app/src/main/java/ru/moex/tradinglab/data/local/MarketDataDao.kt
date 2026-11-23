@@ -18,6 +18,12 @@ interface MarketDataDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertCatalogSync(item: CatalogSyncEntity)
 
+    @Transaction
+    suspend fun saveCatalog(items: List<MarketInstrumentEntity>, sync: CatalogSyncEntity) {
+        upsertInstruments(items)
+        upsertCatalogSync(sync)
+    }
+
     @Query("SELECT * FROM market_instruments WHERE instrumentId = :instrumentId LIMIT 1")
     suspend fun getInstrument(instrumentId: String): MarketInstrumentEntity?
 
