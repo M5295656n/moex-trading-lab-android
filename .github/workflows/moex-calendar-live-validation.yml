@@ -1,0 +1,70 @@
+name: MOEX calendar live validation
+
+on:
+  push:
+    branches:
+      - "feature/moex-calendar-live-validation"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  calendar-live-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect public engine timetable and daily exceptions
+        shell: bash
+        run: |
+          set -euo pipefail
+          for engine in stock futures; do
+            body="/tmp/moex-$engine-engine.json"
+            no_suffix_body="/tmp/moex-$engine-no-suffix.txt"
+            no_suffix_meta="$(curl --insecure --silent --show-error -H 'Accept: application/json' \
+              -o "$no_suffix_body" -w '%{http_code}|%{content_type}' \
+              "https://iss.moex.com/iss/engines/$engine?iss.meta=off&iss.json=extended")"
+            echo "ENGINE $engine without .json: $no_suffix_meta; body=$(head -c 100 "$no_suffix_body" | tr '\n' ' ')"
+            curl --insecure --fail --silent --show-error \
+              -H 'Accept: application/json' -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
+              "https://iss.moex.com/iss/engines/$engine.json?iss.meta=off&iss.json=extended" -o "$body"
+            jq -e '.[1].timetable and .[1].dailytable' "$body" >/dev/null
+            echo "ENGINE $engine with .json: HTTP 200; JSON keys=$(jq -r '.[1] | keys | join(",")' "$body")"
+            for table in timetable dailytable session_schedule; do
+              if jq -e --arg table "$table" '.[1][$table] != null' "$body" >/dev/null; then
+                echo "$engine.$table columns=$(jq -r --arg table "$table" '.[1][$table][0] | keys | join(",")' "$body") rows=$(jq -r --arg table "$table" '.[1][$table] | length' "$body")"
+                if [ "$table" = "timetable" ]; then
+                  jq -c '.[1].timetable[]' "$body"
+                elif [ "$table" = "dailytable" ]; then
+                  echo "Daily exception records from 2025 onward:"
+                  jq -c '.[1].dailytable[] | select(.date >= "2025-01-01")' "$body"
+                else
+                  echo "Futures session schedule records:"
+                  jq -c '.[1].session_schedule[]' "$body"
+                fi
+              fi
+            done
+          done
+
+      - name: Compare legacy calendar URLs and APIM authorization
+        shell: bash
+        run: |
+          set -u
+          base="https://iss.moex.com/iss"
+          probe() {
+            local label="$1"
+            local url="$2"
+            local body="/tmp/moex-probe-$RANDOM.txt"
+            local meta
+            meta="$(curl --insecure --silent --show-error --location --max-time 20 -H 'Accept: application/json' \
+              -o "$body" -w '%{http_code}|%{content_type}' "$url")" || meta="000|transport-error"
+            echo "$label: $meta; $(head -c 100 "$body" | tr '\n' ' ')"
+          }
+          probe "combined all-market calendar" "$base/calendars.json?from=2026-11-20&till=2026-11-30"
+          probe "stock calendar" "$base/calendars/stock.json?show_all_days=1&iss.only=off_days"
+          probe "stock instrument-board calendar" "$base/calendars/stock/securities/boards.json?from=2026-11-20&till=2026-11-30"
+          probe "futures calendar" "$base/calendars/futures.json?show_all_days=1&iss.only=off_days"
+          probe "stock sessions" "$base/calendars/stock/session.json?from=2026-11-20&till=2026-11-30"
+          probe "futures sessions" "$base/calendars/futures/session.json?from=2026-11-20&till=2026-11-30"
+          status="$(curl --insecure --silent --show-error -o /tmp/apim.json -w '%{http_code}' \
+            "https://apim.moex.com/iss/calendars/stock.json?from=2026-11-20&till=2026-11-30")" || status="000"
+          echo "APIM without token: HTTP $status"

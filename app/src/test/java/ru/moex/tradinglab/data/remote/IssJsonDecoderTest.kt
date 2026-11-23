@@ -121,4 +121,40 @@ class IssJsonDecoderTest {
             IssJsonDecoder.decode(json, "engines/stock/markets/shares/securities")
         }
     }
+    @Test
+    fun decodesNamedEngineTableInsteadOfEndpointLastSegment() {
+        val json = """
+            [
+              {"charsetinfo":{"name":"utf-8"}},
+              {
+                "engine":[{"id":1}],
+                "timetable":[
+                  {"week_day":1,"is_work_day":1,"start_time":"06:20:00","stop_time":"23:59:59"}
+                ],
+                "dailytable":[
+                  {"date":"2026-11-23","is_work_day":0,"start_time":"10:00:00","stop_time":"19:00:00"}
+                ]
+              }
+            ]
+        """.trimIndent()
+
+        val timetable = IssJsonDecoder.decode(
+            json,
+            "engines/stock",
+            fetchedAtEpochMillis = 456L,
+            tableName = "timetable"
+        )
+        val dailytable = IssJsonDecoder.decode(
+            json,
+            "engines/stock",
+            tableName = "dailytable"
+        )
+
+        assertEquals(listOf("week_day", "is_work_day", "start_time", "stop_time"), timetable.columns)
+        assertEquals(1, timetable.rows.size)
+        assertEquals(1, timetable.rows.single()["week_day"]?.asInt)
+        assertEquals("2026-11-23", dailytable.rows.single()["date"]?.asString)
+        assertEquals(456L, timetable.fetchedAtEpochMillis)
+    }
+
 }
