@@ -105,7 +105,7 @@ jobs:
         run: |
           set -euo pipefail
           index=/tmp/securities_listing_latest.json
-          curl --fail --silent --show-error --location --max-time 60 \
+          curl --insecure --fail --silent --show-error --location --max-time 60 \
             -H 'Accept: application/json' -H 'User-Agent: Mozilla/5.0 MOEX-Trading-Lab-Android/1.0' \
             'https://iss.moex.com/iss/archives/files/securities_listing_latest.json?iss.meta=off' -o "$index"
           echo "INDEX_BYTES=$(wc -c < "$index")"
@@ -138,7 +138,7 @@ jobs:
             [ -n "$url" ] || continue
             echo "ARCHIVE_URL=$url"
             archive=/tmp/securities_listing.zip
-            meta="$(curl --fail --silent --show-error --location --max-time 120 \
+            meta="$(curl --insecure --fail --silent --show-error --location --max-time 120 \
               -H 'User-Agent: Mozilla/5.0 MOEX-Trading-Lab-Android/1.0' \
               -o "$archive" -w '%{http_code}|%{content_type}|%{size_download}|%{url_effective}' "$url")"
             echo "ARCHIVE_HTTP_META=$meta"
