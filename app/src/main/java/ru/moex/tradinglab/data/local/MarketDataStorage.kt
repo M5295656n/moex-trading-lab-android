@@ -12,11 +12,12 @@ class MarketDataStorage(
     private val dao: MarketDataDao
 ) {
     suspend fun saveCatalog(result: IssCatalogResult) {
-        dao.upsertInstruments(
-            result.instruments.map { MarketDataEntityMapper.instrument(it, result.fetchedAtEpochMillis) }
-        )
-        dao.upsertCatalogSync(
-            CatalogSyncEntity(
+        val instruments = result.instruments.map {
+            MarketDataEntityMapper.instrument(it, result.fetchedAtEpochMillis)
+        }
+        dao.saveCatalog(
+            items = instruments,
+            sync = CatalogSyncEntity(
                 market = result.instruments.firstOrNull()?.market?.name
                     ?: result.endpoint.toMarketKey(),
                 source = result.source,
