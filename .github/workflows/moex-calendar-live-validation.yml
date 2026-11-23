@@ -19,10 +19,16 @@ jobs:
           set -euo pipefail
           for engine in stock futures; do
             body="/tmp/moex-$engine-engine.json"
+            no_suffix_body="/tmp/moex-$engine-no-suffix.txt"
+            no_suffix_meta="$(curl --insecure --silent --show-error -H 'Accept: application/json' \
+              -o "$no_suffix_body" -w '%{http_code}|%{content_type}' \
+              "https://iss.moex.com/iss/engines/$engine?iss.meta=off&iss.json=extended")"
+            echo "ENGINE $engine without .json: $no_suffix_meta; body=$(head -c 100 "$no_suffix_body" | tr '\n' ' ')"
             curl --insecure --fail --silent --show-error \
               -H 'Accept: application/json' -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
-              "https://iss.moex.com/iss/engines/$engine?iss.meta=off&iss.json=extended" -o "$body"
-            echo "ENGINE $engine: HTTP 200; JSON keys=$(jq -r '.[1] | keys | join(",")' "$body")"
+              "https://iss.moex.com/iss/engines/$engine.json?iss.meta=off&iss.json=extended" -o "$body"
+            jq -e '.[1].timetable and .[1].dailytable' "$body" >/dev/null
+            echo "ENGINE $engine with .json: HTTP 200; JSON keys=$(jq -r '.[1] | keys | join(",")' "$body")"
             for table in timetable dailytable session_schedule; do
               if jq -e --arg table "$table" '.[1][$table] != null' "$body" >/dev/null; then
                 echo "$engine.$table columns=$(jq -r --arg table "$table" '.[1][$table][0] | keys | join(",")' "$body") rows=$(jq -r --arg table "$table" '.[1][$table] | length' "$body")"
