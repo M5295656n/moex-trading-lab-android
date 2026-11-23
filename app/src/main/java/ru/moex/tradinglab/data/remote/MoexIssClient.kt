@@ -6,6 +6,7 @@ import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -20,7 +21,7 @@ import java.util.concurrent.TimeUnit
  */
 class MoexIssClient(
     private val httpClient: OkHttpClient = defaultHttpClient(),
-    private val baseUrl: HttpUrl = HttpUrl.get("https://iss.moex.com/iss/")
+    private val baseUrl: HttpUrl = "https://iss.moex.com/iss/".toHttpUrl()
 ) {
     suspend fun getTable(
         endpoint: String,
@@ -107,7 +108,7 @@ internal object IssJsonDecoder {
         val names = columns.map { it.asString }
         val rows = data.map { rowElement ->
             val values = rowElement.asJsonArray
-            if (values.size() != names.size()) {
+            if (values.size() != names.size) {
                 throw MoexIssException.InvalidResponse("Column/value count mismatch in '$tableName'")
             }
             names.indices.associate { index ->
