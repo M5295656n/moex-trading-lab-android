@@ -59,7 +59,9 @@ jobs:
               -o "$body" -w '%{http_code}|%{content_type}' "$url")" || meta="000|transport-error"
             echo "$label: $meta; $(head -c 100 "$body" | tr '\n' ' ')"
           }
+          probe "combined all-market calendar" "$base/calendars.json?from=2026-11-20&till=2026-11-30"
           probe "stock calendar" "$base/calendars/stock.json?show_all_days=1&iss.only=off_days"
+          probe "stock instrument-board calendar" "$base/calendars/stock/securities/boards.json?from=2026-11-20&till=2026-11-30"
           probe "futures calendar" "$base/calendars/futures.json?show_all_days=1&iss.only=off_days"
           probe "stock sessions" "$base/calendars/stock/session.json?from=2026-11-20&till=2026-11-30"
           probe "futures sessions" "$base/calendars/futures/session.json?from=2026-11-20&till=2026-11-30"
