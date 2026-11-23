@@ -13,48 +13,68 @@ jobs:
   calendar-live-smoke:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe public legacy ISS calendar endpoints
+      - name: Probe public ISS and ALGOPACK calendar endpoints
         shell: bash
         run: |
-          set -euo pipefail
+          set -u
           base="https://iss.moex.com/iss"
           from="2026-11-20"
           till="2026-11-30"
-          echo "NOTICE: this diagnostic runner rejects the presented TLS chain."
-          echo "TLS verification is bypassed for this smoke probe only; never use this option in the Android client."
+          failed=0
+          echo "NOTICE: runner TLS verification failed on the first attempt."
+          echo "This diagnostic probe bypasses TLS verification only to expose HTTP status/body; never use this option in the Android client."
 
-          probe_table() {
+          probe_iss() {
             local endpoint="$1"
             local table="$2"
-            local response
-            response="$(curl --insecure --fail --silent --show-error --retry 2 \
-              "$base/$endpoint.json?iss.meta=off&iss.json=extended&from=$from&till=$till")"
-            echo "$response" | jq -e --arg table "$table" '
+            local body="/tmp/moex-$(echo "$endpoint" | tr '/' '-').json"
+            local headers="/tmp/moex-headers.txt"
+            local meta
+            meta="$(curl --insecure --silent --show-error --retry 2 -D "$headers" -o "$body" -w '%{http_code}|%{content_type}' \
+              "$base/$endpoint.json?iss.meta=off&iss.json=extended&from=$from&till=$till")" || {
+                echo "TRANSPORT ERROR: $endpoint"
+                failed=1
+                return
+              }
+            local status="${meta%%|*}"
+            local content_type="${meta#*|}"
+            echo "ISS $endpoint: HTTP $status; content-type=$content_type"
+            if [ "$status" != "200" ]; then
+              head -c 500 "$body" || true
+              echo
+              failed=1
+              return
+            fi
+            if ! jq -e --arg table "$table" '
               (.[1][$table] | type == "array") or
               (.[$table] | type == "object" or type == "array")
-            ' >/dev/null
-            echo "PASS: https://iss.moex.com/iss/$endpoint.json -> $table"
+            ' "$body" >/dev/null 2>&1; then
+              echo "NON-EXPECTED JSON/TABLE for $endpoint; response excerpt:"
+              head -c 700 "$body" || true
+              echo
+              failed=1
+              return
+            fi
+            echo "PASS: table $table returned by $endpoint"
           }
 
-          probe_table "calendars/stock" "off_days"
-          probe_table "calendars/futures" "off_days"
-          probe_table "calendars/stock/session" "session_schedule"
-          probe_table "calendars/futures/session" "session_schedule"
+          probe_iss "calendars/stock" "off_days"
+          probe_iss "calendars/futures" "off_days"
+          probe_iss "calendars/stock/session" "session_schedule"
+          probe_iss "calendars/futures/session" "session_schedule"
 
-      - name: Probe ALGOPACK calendar endpoint without credentials
-        shell: bash
-        run: |
-          set -euo pipefail
-          url="https://apim.moex.com/iss/calendars/stock.json?from=2026-11-20&till=2026-11-30"
-          status="$(curl --insecure --silent --show-error --output /tmp/apim-calendar.json --write-out '%{http_code}' "$url")"
-          echo "APIM unauthenticated HTTP status: $status"
-          if [ "$status" = "200" ]; then
-            jq -e '.off_days or .[1].off_days' /tmp/apim-calendar.json >/dev/null
-            echo "APIM calendar endpoint is accessible without credentials."
-          elif [ "$status" = "401" ] || [ "$status" = "403" ]; then
-            echo "APIM calendar endpoint requires authorization; public ISS remains the candidate."
+          apim_body="/tmp/apim-calendar.json"
+          apim_meta="$(curl --insecure --silent --show-error -o "$apim_body" -w '%{http_code}|%{content_type}' \
+            "https://apim.moex.com/iss/calendars/stock.json?from=$from&till=$till")" || apim_meta="000|transport-error"
+          apim_status="${apim_meta%%|*}"
+          echo "APIM unauthenticated: HTTP $apim_status; content-type=${apim_meta#*|}"
+          if [ "$apim_status" = "401" ] || [ "$apim_status" = "403" ]; then
+            echo "Expected authorization barrier for APIM without Bearer token."
+          elif [ "$apim_status" = "200" ]; then
+            jq -e '.off_days or .[1].off_days' "$apim_body" >/dev/null 2>&1 || failed=1
           else
-            echo "Unexpected APIM response:"
-            head -c 1000 /tmp/apim-calendar.json || true
-            exit 1
+            head -c 700 "$apim_body" || true
+            echo
           fi
+
+          exit "$failed"
