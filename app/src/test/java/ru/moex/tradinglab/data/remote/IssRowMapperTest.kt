@@ -27,7 +27,7 @@ class IssRowMapperTest {
 
     @Test
     fun skipsCatalogRowsWithoutSecurityId() {
-        val row = mapOf("SHORTNAME" to JsonParser.parseString("\\"Без SECID\\""))
+        val row = mapOf("SHORTNAME" to JsonParser.parseString("\"Без SECID\""))
         assertNull(IssRowMapper.instrument(row, MoexMarket.SHARES))
     }
 
