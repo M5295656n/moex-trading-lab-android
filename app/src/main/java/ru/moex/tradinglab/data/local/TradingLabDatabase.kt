@@ -10,9 +10,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         InstrumentEntity::class,
         MarketInstrumentEntity::class,
         CandleEntity::class,
-        HistoryCoverageEntity::class
+        HistoryCoverageEntity::class,
+        CatalogSyncEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class TradingLabDatabase : RoomDatabase() {
@@ -89,6 +90,25 @@ abstract class TradingLabDatabase : RoomDatabase() {
                     )
                 """.trimIndent())
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_history_coverage_instrumentId_intervalMinutes_requestedFrom_requestedTill ON history_coverage(instrumentId, intervalMinutes, requestedFrom, requestedTill)")
+            }
+        }
+
+        /** Adds durable per-market catalog diagnostics without modifying existing rows. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS catalog_sync (
+                        market TEXT NOT NULL PRIMARY KEY,
+                        source TEXT NOT NULL,
+                        endpoint TEXT NOT NULL,
+                        fetchedAtEpochMillis INTEGER NOT NULL,
+                        instrumentCount INTEGER NOT NULL,
+                        pageCount INTEGER NOT NULL,
+                        pageSize INTEGER NOT NULL,
+                        completeness TEXT NOT NULL,
+                        skippedRows INTEGER NOT NULL
+                    )
+                """.trimIndent())
             }
         }
     }
