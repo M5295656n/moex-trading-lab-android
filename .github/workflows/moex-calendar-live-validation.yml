@@ -13,7 +13,7 @@ jobs:
   calendar-live-smoke:
     runs-on: ubuntu-latest
     steps:
-      - name: Compare legacy ISS calendar URL variants
+      - name: Probe public ISS engine calendars and legacy calendar URL variants
         shell: bash
         run: |
           set -u
@@ -22,21 +22,24 @@ jobs:
           probe() {
             local label="$1"
             local url="$2"
-            local body="/tmp/moex-probe-$RANDOM.txt"
+            local body="/tmp/moex-probe-$RANDOM.json"
             local meta
             meta="$(curl --insecure --silent --show-error --location --max-time 20 \
-              -H 'Accept: application/json' \
-              -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
+              -H 'Accept: application/json' -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
               -o "$body" -w '%{http_code}|%{content_type}|%{url_effective}' "$url")" || meta="000|transport-error|$url"
             echo "PROBE $label: $meta"
             if jq -e . "$body" >/dev/null 2>&1; then
               echo "JSON keys: $(jq -r 'if type == "array" then (.[1] // {} | keys | join(",")) else keys | join(",") end' "$body" 2>/dev/null)"
+              if [[ "$label" == *"engine"* ]]; then
+                jq -r '.[1] // . | to_entries[] | select(.key=="dailytable" or .key=="timetable") | "\(.key): columns=\(.value.columns|join(",")); sample=\((.value.data[0] // [])|tostring)"' "$body" 2>/dev/null || true
+              fi
             else
               echo "BODY: $(head -c 240 "$body" | tr '\n' ' ')"
             fi
           }
 
-          probe "ISS control engines.json" "$base/engines/stock.json"
+          probe "ISS stock engine calendar" "$base/engines/stock.json"
+          probe "ISS futures engine calendar" "$base/engines/futures.json"
           probe "stock calendar no suffix" "$base/calendars/stock?show_all_days=1&iss.only=off_days"
           probe "stock calendar json suffix" "$base/calendars/stock.json?show_all_days=1&iss.only=off_days"
           probe "futures calendar no suffix" "$base/calendars/futures?show_all_days=1&iss.only=off_days"
