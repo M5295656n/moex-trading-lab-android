@@ -3,7 +3,8 @@ name: MOEX ISS catalog and history smoke test
 on:
   push:
     branches:
-      - "feature/moex-catalog-history-loader"
+      - "feature/moex-iss-data-foundation"
+      - "feature/iss-live-coverage-matrix-*"
   workflow_dispatch:
 
 permissions:
@@ -21,18 +22,72 @@ jobs:
             local endpoint="$1"
             local table="$2"
             local response
-            response="$(curl --fail --silent --show-error --retry 2 "https://iss.moex.com/iss/${endpoint}.json?iss.meta=off&iss.json=extended&iss.only=${table}")"
-            echo "$response" | jq -e --arg table "$table" '.[1][$table] | type == "array"' >/dev/null
-            echo "OK: $endpoint -> $table"
+            response="$(curl --insecure --fail --silent --show-error --retry 2 "https://iss.moex.com/iss/${endpoint}.json?iss.meta=off&iss.only=${table}")"
+            echo "$response" | jq -e --arg table "$table" '
+              .[$table].columns | type == "array" and length > 0
+            ' >/dev/null
+            echo "$response" | jq -e --arg table "$table" '
+              .[$table].data | type == "array"
+            ' >/dev/null
+            echo "OK: $endpoint -> $table schema"
           }
           check_table "engines/stock/markets/shares/securities" "securities"
           check_table "engines/futures/markets/forts/securities" "securities"
           check_table "engines/stock/markets/index/securities" "securities"
 
-      - name: Check paginated candle endpoint
+      - name: Check candle history by market and interval
         shell: bash
         run: |
           set -euo pipefail
-          response="$(curl --fail --silent --show-error --retry 2 "https://iss.moex.com/iss/engines/stock/markets/shares/securities/SBER/candles.json?iss.meta=off&iss.json=extended&from=2026-11-01&till=2026-11-23&interval=24&start=0&limit=5")"
-          echo "$response" | jq -e '.[1].candles | type == "array"' >/dev/null
-          echo "OK: SBER daily candles with start/limit pagination"
+          from_date="$(date -u -d '30 days ago' +%Y-%m-%d)"
+          till_date="$(date -u +%Y-%m-%d)"
+
+          check_candles() {
+            local market="$1"
+            local secid="$2"
+            local interval="$3"
+            local endpoint="$4"
+            local response
+            response="$(curl --insecure --fail --silent --show-error --retry 2 \
+              "https://iss.moex.com/iss/${endpoint}/${secid}/candles.json?iss.meta=off&from=${from_date}&till=${till_date}&interval=${interval}&start=0&limit=500")"
+
+            echo "$response" | jq -e '
+              .candles.columns as $columns
+              | ($columns | type == "array")
+                and (["begin", "open", "close", "high", "low"] - $columns | length == 0)
+            ' >/dev/null
+
+            local row_count
+            row_count="$(echo "$response" | jq '.candles.data | length')"
+            if [ "$row_count" -lt 1 ]; then
+              echo "No candle rows: market=$market secid=$secid interval=$interval range=$from_date..$till_date" >&2
+              exit 1
+            fi
+            echo "OK: market=$market secid=$secid interval=$interval rows=$row_count"
+
+            # Explicitly validate offset pagination on a sufficiently dense series.
+            if [ "$market" = "shares" ] && [ "$secid" = "SBER" ] && [ "$interval" = "1" ] && [ "$row_count" -eq 500 ]; then
+              local begin_index
+              local last_begin
+              local next_page
+              begin_index="$(echo "$response" | jq '.candles.columns | index("begin")')"
+              last_begin="$(echo "$response" | jq -r --argjson idx "$begin_index" '.candles.data[-1][$idx]')"
+              next_page="$(curl --insecure --fail --silent --show-error --retry 2 \
+                "https://iss.moex.com/iss/${endpoint}/${secid}/candles.json?iss.meta=off&from=${from_date}&till=${till_date}&interval=${interval}&start=500&limit=500")"
+              echo "$next_page" | jq -e --arg last "$last_begin" --argjson idx "$begin_index" '
+                .candles.data as $rows
+                | ($rows | type == "array" and length > 0)
+                  and ($rows[0][$idx] > $last)
+              ' >/dev/null
+              echo "OK: SBER interval=1 pagination start=500 continues after $last_begin"
+            fi
+          }
+
+          # Representative liquid share, active futures contract and broad index.
+          # Each interval is checked independently; availability is not inferred
+          # from another market or another instrument.
+          for interval in 1 10 60 24; do
+            check_candles "shares" "SBER" "$interval" "engines/stock/markets/shares/securities"
+            check_candles "futures" "SiZ6" "$interval" "engines/futures/markets/forts/securities"
+            check_candles "indices" "IMOEX" "$interval" "engines/stock/markets/index/securities"
+          done
