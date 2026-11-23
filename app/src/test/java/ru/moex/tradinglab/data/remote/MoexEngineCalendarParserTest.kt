@@ -78,5 +78,5 @@ class MoexEngineCalendarParserTest {
     }
 
     private fun row(vararg fields: Pair<String, String?>): Map<String, JsonElement?> =
-        fields.associate { (key, value) -> key to value?.let(::JsonPrimitive) }
+        fields.associate { (key, value) -> key to value?.let { JsonPrimitive(it) } }
 }
