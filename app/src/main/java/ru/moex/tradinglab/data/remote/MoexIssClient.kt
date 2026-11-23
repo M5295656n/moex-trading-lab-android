@@ -90,38 +90,72 @@ internal object IssJsonDecoder {
         fetchedAtEpochMillis: Long = System.currentTimeMillis()
     ): IssTable {
         val root = try {
-            JsonParser.parseString(json).asJsonObject
+            JsonParser.parseString(json)
         } catch (error: Exception) {
             throw MoexIssException.InvalidResponse("ISS response is not valid JSON")
         }
 
-        val iss = root.getAsJsonObject("iss")
-            ?: throw MoexIssException.InvalidResponse("Missing ISS metadata object")
         val tableName = endpoint.substringAfterLast('/').substringBefore('.')
-        val table = findTable(iss, tableName)
+        val table = findTable(root, tableName)
             ?: throw MoexIssException.InvalidResponse("No table '$tableName' in ISS response")
 
-        val columns = table.getAsJsonArray("columns")
-            ?: throw MoexIssException.InvalidResponse("Missing columns for '$tableName'")
-        val data = table.getAsJsonArray("data")
-            ?: throw MoexIssException.InvalidResponse("Missing data for '$tableName'")
-        val names = columns.map { it.asString }
-        val rows = data.map { rowElement ->
-            val values = rowElement.asJsonArray
-            if (values.size() != names.size) {
-                throw MoexIssException.InvalidResponse("Column/value count mismatch in '$tableName'")
+        // MOEX ISS with iss.json=extended returns [charsetinfo, {tableName: [...]}].
+        // The legacy non-extended representation uses {iss:{tableName:{columns,data}}}.
+        if (table.isJsonArray) {
+            val records = table.asJsonArray
+            val names = linkedSetOf<String>()
+            records.forEach { record ->
+                if (!record.isJsonObject) {
+                    throw MoexIssException.InvalidResponse("Non-object row in '$tableName'")
+                }
+                record.asJsonObject.keySet().forEach(names::add)
             }
-            names.indices.associate { index ->
-                names[index] to values[index].takeUnless { it.isJsonNull }
+            val columns = names.toList()
+            val rows = records.map { record ->
+                val values = record.asJsonObject
+                columns.associateWith { name ->
+                    values.get(name)?.takeUnless { it.isJsonNull }
+                }
             }
+            return IssTable(endpoint, columns, rows, fetchedAtEpochMillis)
         }
-        return IssTable(endpoint, names, rows, fetchedAtEpochMillis)
+
+        if (table.isJsonObject) {
+            val tableObject = table.asJsonObject
+            val columns = tableObject.getAsJsonArray("columns")
+                ?: throw MoexIssException.InvalidResponse("Missing columns for '$tableName'")
+            val data = tableObject.getAsJsonArray("data")
+                ?: throw MoexIssException.InvalidResponse("Missing data for '$tableName'")
+            val names = columns.map { it.asString }
+            val rows = data.map { rowElement ->
+                val values = rowElement.asJsonArray
+                if (values.size() != names.size) {
+                    throw MoexIssException.InvalidResponse("Column/value count mismatch in '$tableName'")
+                }
+                names.indices.associate { index ->
+                    names[index] to values[index].takeUnless { it.isJsonNull }
+                }
+            }
+            return IssTable(endpoint, names, rows, fetchedAtEpochMillis)
+        }
+
+        throw MoexIssException.InvalidResponse("Unsupported table format for '$tableName'")
     }
 
-    private fun findTable(iss: JsonObject, tableName: String): JsonObject? {
-        iss.getAsJsonObject(tableName)?.let { return it }
-        return iss.entrySet()
-            .firstOrNull { it.key.equals(tableName, ignoreCase = true) }
-            ?.value?.takeIf { it.isJsonObject }?.asJsonObject
+    private fun findTable(root: JsonElement, tableName: String): JsonElement? {
+        val candidates = when {
+            root.isJsonArray -> root.asJsonArray.mapNotNull { it.takeIf(JsonElement::isJsonObject)?.asJsonObject }
+            root.isJsonObject -> {
+                val rootObject = root.asJsonObject
+                val nestedIss = rootObject.getAsJsonObject("iss")
+                listOfNotNull(nestedIss, rootObject)
+            }
+            else -> emptyList()
+        }
+        return candidates.asSequence()
+            .mapNotNull { objectValue ->
+                objectValue.entrySet().firstOrNull { it.key.equals(tableName, ignoreCase = true) }?.value
+            }
+            .firstOrNull()
     }
 }
