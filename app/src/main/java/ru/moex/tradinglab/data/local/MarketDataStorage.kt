@@ -15,6 +15,20 @@ class MarketDataStorage(
         dao.upsertInstruments(
             result.instruments.map { MarketDataEntityMapper.instrument(it, result.fetchedAtEpochMillis) }
         )
+        dao.upsertCatalogSync(
+            CatalogSyncEntity(
+                market = result.instruments.firstOrNull()?.market?.name
+                    ?: result.endpoint.toMarketKey(),
+                source = result.source,
+                endpoint = result.endpoint,
+                fetchedAtEpochMillis = result.fetchedAtEpochMillis,
+                instrumentCount = result.instruments.size,
+                pageCount = result.pageCount,
+                pageSize = result.requestedPageSize,
+                completeness = result.completeness.name,
+                skippedRows = result.skippedRows
+            )
+        )
     }
 
     suspend fun saveInstrument(
@@ -60,5 +74,11 @@ class MarketDataStorage(
             freshnessStatus = freshnessStatus
         )
         dao.saveHistory(candles, coverage)
+    }
+
+    private fun String.toMarketKey(): String = when {
+        contains("futures/markets/forts") -> "FUTURES"
+        contains("markets/index") -> "INDICES"
+        else -> "SHARES"
     }
 }
