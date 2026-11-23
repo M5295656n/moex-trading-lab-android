@@ -12,7 +12,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class TradingLabDatabaseMigrationTest {
@@ -44,7 +43,10 @@ class TradingLabDatabaseMigrationTest {
         legacy.close()
 
         database = Room.databaseBuilder(context, TradingLabDatabase::class.java, databaseName)
-            .addMigrations(TradingLabDatabase.MIGRATION_1_2)
+            .addMigrations(
+                TradingLabDatabase.MIGRATION_1_2,
+                TradingLabDatabase.MIGRATION_2_3
+            )
             .build()
     }
 
@@ -55,7 +57,7 @@ class TradingLabDatabaseMigrationTest {
     }
 
     @Test
-    fun migrationPreservesLegacyRowsAndCreatesMarketTables() = runBlocking {
+    fun migrationPreservesLegacyRowsAndPersistsCatalogDiagnostics() = runBlocking {
         val legacyRows = database.openHelper.readableDatabase.query("SELECT * FROM instruments")
         assertEquals(1, legacyRows.count)
         legacyRows.moveToFirst()
@@ -78,6 +80,30 @@ class TradingLabDatabaseMigrationTest {
         )
         database.marketDataDao().upsertInstruments(listOf(instrument))
         assertNotNull(database.marketDataDao().getInstrument(instrument.instrumentId))
-        assertEquals(2, database.openHelper.readableDatabase.version)
+
+        database.marketDataDao().upsertCatalogSync(
+            CatalogSyncEntity(
+                market = "SHARES",
+                source = "MOEX ISS",
+                endpoint = "engines/stock/markets/shares/securities",
+                fetchedAtEpochMillis = 789,
+                instrumentCount = 1,
+                pageCount = 1,
+                pageSize = 500,
+                completeness = "COMPLETE",
+                skippedRows = 0
+            )
+        )
+        val catalogRows = database.openHelper.readableDatabase.query(
+            "SELECT market, instrumentCount, completeness FROM catalog_sync"
+        )
+        assertEquals(1, catalogRows.count)
+        catalogRows.moveToFirst()
+        assertEquals("SHARES", catalogRows.getString(0))
+        assertEquals(1, catalogRows.getInt(1))
+        assertEquals("COMPLETE", catalogRows.getString(2))
+        catalogRows.close()
+
+        assertEquals(3, database.openHelper.readableDatabase.version)
     }
 }
