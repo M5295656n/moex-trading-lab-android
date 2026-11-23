@@ -46,6 +46,6 @@ class MarketDataFreshnessEvaluatorTest {
             60,
             LocalDateTime.parse("2026-11-23 18:00:00", java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
         )
-        assertEquals(MarketDataFreshness.MARKET_CLOSED, result.status)
+        assertEquals(MarketDataFreshness.WAITING_FOR_CANDLE_CLOSE, result.status)
     }
 }
