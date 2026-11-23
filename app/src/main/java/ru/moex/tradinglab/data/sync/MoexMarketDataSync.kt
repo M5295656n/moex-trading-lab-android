@@ -14,7 +14,8 @@ import ru.moex.tradinglab.data.remote.MoexMarket
  */
 class MoexMarketDataSync(
     private val remote: MoexIssDataRepository,
-    private val storage: MarketDataStorage
+    private val storage: MarketDataStorage,
+    private val latestCandleProvider: LatestCandleProvider
 ) {
     suspend fun syncCatalog(
         market: MoexMarket,
@@ -41,7 +42,6 @@ class MoexMarketDataSync(
         val instrumentId = MarketDataEntityMapper.instrumentId(
             instrument.secId, instrument.market.name, instrument.boardId
         )
-        // Ensure the FK parent exists before the candle transaction is committed.
         storage.saveInstrument(instrument)
 
         val query = buildMap {
@@ -65,8 +65,48 @@ class MoexMarketDataSync(
         return result
     }
 
+    /**
+     * Refreshes an existing series from its last stored candle, inclusive.
+     * Re-fetching that boundary candle allows MOEX to correct a still-forming
+     * candle; Room's composite key replaces it without duplicating history.
+     * When no local candle exists, initialFrom is used (null means ISS default).
+     */
+    suspend fun syncInstrumentHistoryIncrementally(
+        instrument: IssInstrument,
+        intervalMinutes: Int,
+        initialFrom: String? = null,
+        till: String? = null,
+        pageSize: Int = MoexIssDataRepository.DEFAULT_PAGE_SIZE,
+        maxPages: Int = MoexIssDataRepository.DEFAULT_MAX_PAGES
+    ): IssHistoryResult {
+        val instrumentId = MarketDataEntityMapper.instrumentId(
+            instrument.secId, instrument.market.name, instrument.boardId
+        )
+        val lastStoredBegin = latestCandleProvider.latestBegin(instrumentId, intervalMinutes)
+        val from = IncrementalHistoryPlanner.nextFrom(lastStoredBegin, initialFrom)
+        return syncInstrumentHistory(
+            instrument = instrument,
+            intervalMinutes = intervalMinutes,
+            from = from,
+            till = till,
+            pageSize = pageSize,
+            maxPages = maxPages
+        )
+    }
+
     companion object {
         /** MOEX ISS candle interval values are expressed in minutes; 24 denotes daily candles. */
         val SUPPORTED_INTERVALS = setOf(1, 10, 60, 24)
     }
+}
+
+/** Small persistence read boundary keeps incremental planning independently testable. */
+fun interface LatestCandleProvider {
+    suspend fun latestBegin(instrumentId: String, intervalMinutes: Int): String?
+}
+
+object IncrementalHistoryPlanner {
+    /** Existing boundary is inclusive; otherwise start with the caller's initial range. */
+    fun nextFrom(lastStoredBegin: String?, initialFrom: String?): String? =
+        lastStoredBegin?.takeIf(String::isNotBlank) ?: initialFrom?.takeIf(String::isNotBlank)
 }
