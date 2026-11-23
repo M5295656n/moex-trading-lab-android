@@ -6,7 +6,7 @@ import java.util.LinkedHashMap
 enum class MoexMarket(val catalogEndpoint: String) {
     SHARES("engines/stock/markets/shares/securities"),
     FUTURES("engines/futures/markets/forts/securities"),
-    INDICES("statistics/engines/stock/markets/index/securities")
+    INDICES("engines/stock/markets/index/securities")
 }
 
 data class IssInstrument(
