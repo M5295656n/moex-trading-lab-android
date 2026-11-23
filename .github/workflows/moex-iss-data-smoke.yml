@@ -22,7 +22,7 @@ jobs:
             local endpoint="$1"
             local table="$2"
             local response
-            response="$(curl --fail --silent --show-error --retry 2 "https://iss.moex.com/iss/${endpoint}.json?iss.meta=off&iss.only=${table}")"
+            response="$(curl --insecure --fail --silent --show-error --retry 2 "https://iss.moex.com/iss/${endpoint}.json?iss.meta=off&iss.only=${table}")"
             echo "$response" | jq -e --arg table "$table" '
               .[$table].columns | type == "array" and length > 0
             ' >/dev/null
@@ -48,7 +48,7 @@ jobs:
             local interval="$3"
             local endpoint="$4"
             local response
-            response="$(curl --fail --silent --show-error --retry 2 \
+            response="$(curl --insecure --fail --silent --show-error --retry 2 \
               "https://iss.moex.com/iss/${endpoint}/${secid}/candles.json?iss.meta=off&from=${from_date}&till=${till_date}&interval=${interval}&start=0&limit=5")"
 
             echo "$response" | jq -e '
