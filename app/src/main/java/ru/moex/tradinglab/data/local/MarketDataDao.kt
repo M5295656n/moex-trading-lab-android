@@ -81,6 +81,12 @@ interface MarketDataDao {
     fun observeCandles(instrumentId: String, intervalMinutes: Int): Flow<List<CandleEntity>>
 
     @Query("""
+        SELECT MAX(begin) FROM candles
+        WHERE instrumentId = :instrumentId AND intervalMinutes = :intervalMinutes
+    """)
+    suspend fun getLatestCandleBegin(instrumentId: String, intervalMinutes: Int): String?
+
+    @Query("""
         SELECT * FROM candles
         WHERE instrumentId = :instrumentId AND intervalMinutes = :intervalMinutes
           AND begin >= :from AND begin <= :till
