@@ -1,0 +1,72 @@
+name: MOEX ISS live API smoke test
+
+on:
+  push:
+    branches:
+      - "test/moex-iss-live-responses"
+
+permissions:
+  contents: read
+
+jobs:
+  live-api:
+    name: Fetch and inspect real MOEX ISS JSON
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch live ISS endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p iss-responses
+          base="https://iss.moex.com/iss"
+          fetch() {
+            local name="$1"
+            local endpoint="$2"
+            echo "===== $name ====="
+            curl --fail --silent --show-error --location \
+              --retry 3 --retry-delay 2 --max-time 45 \
+              -H 'Accept: application/json' \
+              -H 'User-Agent: MOEX-Trading-Lab-live-smoke/1.0' \
+              "$base/$endpoint" -o "iss-responses/$name.json"
+            wc -c "iss-responses/$name.json"
+          }
+          common='iss.meta=off&iss.json=extended'
+          fetch shares-catalog "engines/stock/markets/shares/securities.json?$common"
+          fetch futures-catalog "engines/futures/markets/forts/securities.json?$common"
+          fetch indices-catalog "engines/stock/markets/index/securities.json?$common"
+          fetch sber-daily-candles "engines/stock/markets/shares/securities/SBER/candles.json?$common&from=2026-11-16&till=2026-11-23&interval=24&start=0"
+          fetch sber-minute-candles "engines/stock/markets/shares/securities/SBER/candles.json?$common&from=2026-11-23&till=2026-11-23&interval=1&start=0"
+          fetch sber-candles-page-100 "engines/stock/markets/shares/securities/SBER/candles.json?$common&from=2026-11-16&till=2026-11-23&interval=24&start=100"
+      - name: Inspect actual JSON envelope and tables
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          for path in sorted(pathlib.Path("iss-responses").glob("*.json")):
+              raw = path.read_text(encoding="utf-8")
+              doc = json.loads(raw)
+              print(f"\\n### {path.name}: {len(raw)} bytes")
+              print("root_type:", type(doc).__name__)
+              if isinstance(doc, dict):
+                  print("root_keys:", list(doc.keys())[:20])
+                  for key, value in doc.items():
+                      if isinstance(value, dict) and "columns" in value and "data" in value:
+                          rows = value["data"]
+                          print(f"TABLE {key}: columns={value['columns']} rows={len(rows)}")
+                          if rows: print("FIRST_ROW:", rows[0])
+              elif isinstance(doc, list):
+                  print("array_length:", len(doc))
+                  for i, item in enumerate(doc[:5]):
+                      if isinstance(item, dict):
+                          print(f"ITEM[{i}] keys:", list(item.keys())[:20])
+                          for key, value in item.items():
+                              if isinstance(value, dict) and "columns" in value and "data" in value:
+                                  rows = value["data"]
+                                  print(f"TABLE {key}: columns={value['columns']} rows={len(rows)}")
+                                  if rows: print("FIRST_ROW:", rows[0])
+          PY
+      - name: Upload raw live ISS responses
+        uses: actions/upload-artifact@v4
+        with:
+          name: moex-iss-live-responses
+          path: iss-responses/*.json
+          if-no-files-found: error
