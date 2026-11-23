@@ -35,7 +35,8 @@ class MoexCalendarRepository(private val client: MoexIssClient) {
         require(!till.isBefore(from)) { "till must not be before from" }
         val table = client.getTable(
             "calendars/${market.path}",
-            mapOf("from" to from.toString(), "till" to till.toString())
+            mapOf("from" to from.toString(), "till" to till.toString()),
+            tableName = "off_days"
         )
         return table.rows.mapNotNull { row ->
             val date = row.string("tradedate")?.let {
@@ -66,7 +67,11 @@ class MoexCalendarRepository(private val client: MoexIssClient) {
             secId?.let { put("secid", it) }
             boardId?.let { put("boardid", it) }
         }
-        val table = client.getTable("calendars/${market.path}/session", query)
+        val table = client.getTable(
+            "calendars/${market.path}/session",
+            query,
+            tableName = "session_schedule"
+        )
         return table.rows.mapNotNull { row ->
             val values = row.mapValues { (_, value) ->
                 value?.takeUnless(JsonElement::isJsonNull)?.asString
