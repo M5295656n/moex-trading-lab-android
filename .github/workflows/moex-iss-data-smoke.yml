@@ -27,7 +27,7 @@ jobs:
           }
           check_table "engines/stock/markets/shares/securities" "securities"
           check_table "engines/futures/markets/forts/securities" "securities"
-          check_table "statistics/engines/stock/markets/index/securities" "securities"
+          check_table "engines/stock/markets/index/securities" "securities"
 
       - name: Check paginated candle endpoint
         shell: bash
