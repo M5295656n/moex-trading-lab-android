@@ -39,6 +39,20 @@ enum class HistoryCompleteness {
     PAGINATION_STALLED
 }
 
+data class IssCatalogResult(
+    val instruments: List<IssInstrument>,
+    val source: String,
+    val endpoint: String,
+    val fetchedAtEpochMillis: Long,
+    val pageCount: Int,
+    val requestedPageSize: Int,
+    val completeness: HistoryCompleteness,
+    val skippedRows: Int,
+    val pageStarts: List<Int>
+) {
+    val isComplete: Boolean get() = completeness == HistoryCompleteness.COMPLETE
+}
+
 data class IssHistoryResult(
     val candles: List<IssCandle>,
     val source: String,
@@ -62,9 +76,63 @@ data class IssHistoryResult(
 class MoexIssDataRepository(
     private val client: MoexIssClient
 ) {
-    suspend fun loadCatalog(market: MoexMarket): List<IssInstrument> {
-        val table = client.getTable(market.catalogEndpoint)
-        return table.rows.mapNotNull { row -> IssRowMapper.instrument(row, market) }
+    suspend fun loadCatalog(
+        market: MoexMarket,
+        pageSize: Int = DEFAULT_PAGE_SIZE,
+        maxPages: Int = DEFAULT_MAX_PAGES,
+        query: Map<String, String> = emptyMap()
+    ): IssCatalogResult {
+        require(pageSize in 1..MAX_PAGE_SIZE) { "pageSize must be between 1 and $MAX_PAGE_SIZE" }
+        require(maxPages > 0) { "maxPages must be positive" }
+
+        val instrumentsById = LinkedHashMap<String, IssInstrument>()
+        val starts = mutableListOf<Int>()
+        var skippedRows = 0
+        var pages = 0
+        var fetchedAt = System.currentTimeMillis()
+        var completeness = HistoryCompleteness.PAGE_LIMIT_REACHED
+
+        while (pages < maxPages) {
+            val start = pages * pageSize
+            starts += start
+            val table = client.getTable(
+                market.catalogEndpoint,
+                query + mapOf("start" to start.toString(), "limit" to pageSize.toString())
+            )
+            fetchedAt = table.fetchedAtEpochMillis
+            pages++
+
+            var addedOnPage = 0
+            table.rows.forEach { row ->
+                val instrument = IssRowMapper.instrument(row, market)
+                if (instrument == null) {
+                    skippedRows++
+                } else if (instrumentsById.putIfAbsent(instrument.secId, instrument) == null) {
+                    addedOnPage++
+                }
+            }
+
+            if (table.rows.size < pageSize) {
+                completeness = HistoryCompleteness.COMPLETE
+                break
+            }
+            if (addedOnPage == 0) {
+                completeness = HistoryCompleteness.PAGINATION_STALLED
+                break
+            }
+        }
+
+        return IssCatalogResult(
+            instruments = instrumentsById.values.toList(),
+            source = "MOEX ISS",
+            endpoint = market.catalogEndpoint,
+            fetchedAtEpochMillis = fetchedAt,
+            pageCount = pages,
+            requestedPageSize = pageSize,
+            completeness = completeness,
+            skippedRows = skippedRows,
+            pageStarts = starts.toList()
+        )
     }
 
     /**
@@ -75,7 +143,8 @@ class MoexIssDataRepository(
     suspend fun loadCandles(
         endpoint: String,
         pageSize: Int = DEFAULT_PAGE_SIZE,
-        maxPages: Int = DEFAULT_MAX_PAGES
+        maxPages: Int = DEFAULT_MAX_PAGES,
+        query: Map<String, String> = emptyMap()
     ): IssHistoryResult {
         require(endpoint.isNotBlank()) { "ISS candles endpoint must not be blank" }
         require(pageSize in 1..MAX_PAGE_SIZE) { "pageSize must be between 1 and $MAX_PAGE_SIZE" }
@@ -91,7 +160,7 @@ class MoexIssDataRepository(
         while (pages < maxPages) {
             val start = pages * pageSize
             starts += start
-            val table = client.getTable(endpoint, mapOf("start" to start.toString(), "limit" to pageSize.toString()))
+            val table = client.getTable(endpoint, query + mapOf("start" to start.toString(), "limit" to pageSize.toString()))
             fetchedAt = table.fetchedAtEpochMillis
             pages++
 
