@@ -78,11 +78,9 @@ class TradingLabDatabaseMigrationTest {
             rawFieldsJson = null,
             fetchedAtEpochMillis = 456
         )
-        database.marketDataDao().upsertInstruments(listOf(instrument))
-        assertNotNull(database.marketDataDao().getInstrument(instrument.instrumentId))
-
-        database.marketDataDao().upsertCatalogSync(
-            CatalogSyncEntity(
+        database.marketDataDao().saveCatalog(
+            items = listOf(instrument),
+            sync = CatalogSyncEntity(
                 market = "SHARES",
                 source = "MOEX ISS",
                 endpoint = "engines/stock/markets/shares/securities",
