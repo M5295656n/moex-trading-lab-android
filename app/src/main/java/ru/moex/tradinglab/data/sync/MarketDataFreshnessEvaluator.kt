@@ -12,6 +12,7 @@ enum class MarketDataFreshness {
     FRESH,
     STALE,
     MARKET_CLOSED,
+    WAITING_FOR_CANDLE_CLOSE,
     UNKNOWN
 }
 
@@ -58,12 +59,13 @@ object MarketDataFreshnessEvaluator {
         val latestObserved = observedStarts.maxOrNull()
 
         if (latestCompleted == null) {
-            return FreshnessReport(
-                MarketDataFreshness.MARKET_CLOSED,
-                null,
-                latestObserved,
-                nowText
-            )
+            val currentCandle = parsedExpected.lastOrNull { (_, start) -> !start.isAfter(now) }
+            val status = if (currentCandle != null) {
+                MarketDataFreshness.WAITING_FOR_CANDLE_CLOSE
+            } else {
+                MarketDataFreshness.MARKET_CLOSED
+            }
+            return FreshnessReport(status, null, latestObserved, nowText)
         }
 
         val observedDateTime = latestObserved?.let {
