@@ -132,7 +132,7 @@ class MoexIssDataRepository(
     companion object {
         const val DEFAULT_PAGE_SIZE = 500
         const val DEFAULT_MAX_PAGES = 200
-        const val MAX_PAGE_SIZE = 5000
+        const val MAX_PAGE_SIZE = 500
     }
 }
 
