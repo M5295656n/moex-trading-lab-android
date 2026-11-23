@@ -21,8 +21,8 @@ class IssRowMapperTest {
         assertEquals("ПАО Сбербанк", instrument?.name)
         assertEquals("RU0009029540", instrument?.isin)
         assertEquals(10.0, instrument?.lotSize!!, 0.000001)
-        assertEquals("RUB", instrument.currency)
-        assertEquals("10", instrument.rawFields["LOTSIZE"])
+        assertEquals("RUB", instrument?.currency)
+        assertEquals("10", instrument?.rawFields?.get("LOTSIZE"))
     }
 
     @Test
