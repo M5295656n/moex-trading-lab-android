@@ -114,7 +114,7 @@ jobs:
           import json, re, sys
           from urllib.parse import urljoin
           data=json.load(open('/tmp/securities_listing_latest.json', encoding='utf-8'))
-          found=[]
+          found=[('public SecuritiesListing page','https://iss.moex.com/file/stock_boardsecid/SL.ZIP')]
           def walk(x, path='$'):
               if isinstance(x, dict):
                   for k,v in x.items():
