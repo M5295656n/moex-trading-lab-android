@@ -41,7 +41,6 @@ class MoexMarketDataSync(
         val instrumentId = MarketDataEntityMapper.instrumentId(
             instrument.secId, instrument.market.name, instrument.boardId
         )
-        // Ensure the FK parent exists before the candle transaction is committed.
         storage.saveInstrument(instrument)
 
         val query = buildMap {
@@ -65,8 +64,44 @@ class MoexMarketDataSync(
         return result
     }
 
+    /**
+     * Refreshes an existing series from its last stored candle, inclusive.
+     * Re-fetching that boundary candle lets ISS correct a still-forming candle;
+     * Room's composite key replaces it without duplicating history. For an empty
+     * local series, initialFrom is used (null means ISS default history range).
+     */
+    suspend fun syncInstrumentHistoryIncrementally(
+        instrument: IssInstrument,
+        intervalMinutes: Int,
+        initialFrom: String? = null,
+        till: String? = null,
+        pageSize: Int = MoexIssDataRepository.DEFAULT_PAGE_SIZE,
+        maxPages: Int = MoexIssDataRepository.DEFAULT_MAX_PAGES
+    ): IssHistoryResult {
+        require(intervalMinutes in SUPPORTED_INTERVALS) { "Unsupported MOEX candle interval: " + intervalMinutes }
+        val instrumentId = MarketDataEntityMapper.instrumentId(
+            instrument.secId, instrument.market.name, instrument.boardId
+        )
+        val lastStoredBegin = storage.latestCandleBegin(instrumentId, intervalMinutes)
+        val from = IncrementalHistoryPlanner.nextFrom(lastStoredBegin, initialFrom)
+        return syncInstrumentHistory(
+            instrument = instrument,
+            intervalMinutes = intervalMinutes,
+            from = from,
+            till = till,
+            pageSize = pageSize,
+            maxPages = maxPages
+        )
+    }
+
     companion object {
         /** MOEX ISS candle interval values are expressed in minutes; 24 denotes daily candles. */
         val SUPPORTED_INTERVALS = setOf(1, 10, 60, 24)
     }
+}
+
+/** Pure boundary selection, intentionally inclusive to refresh the last stored candle. */
+object IncrementalHistoryPlanner {
+    fun nextFrom(lastStoredBegin: String?, initialFrom: String?): String? =
+        lastStoredBegin?.takeIf(String::isNotBlank) ?: initialFrom?.takeIf(String::isNotBlank)
 }
