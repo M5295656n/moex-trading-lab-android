@@ -164,7 +164,7 @@ jobs:
                       pos=32
                       while pos < header_len and raw[pos] != 0x0D:
                           desc=raw[pos:pos+32]
-                          name=desc[:11].split(b'\\x00',1)[0].decode('ascii','replace').strip()
+                          name=desc[:11].decode('ascii','replace').replace('\\x00','').strip()
                           typ=chr(desc[11])
                           size=desc[16]
                           decimals=desc[17]
@@ -184,7 +184,7 @@ jobs:
                                   v=value.decode('ascii','ignore').strip()
                                   v=f'{v[:4]}-{v[4:6]}-{v[6:8]}' if len(v)==8 and v.isdigit() else v
                               else:
-                                  v=value.decode('cp1251','replace').strip()
+                                  v=value.decode('cp866','replace').strip()
                               row[name]=v
                           rows.append(row)
                           d=row.get('TRADEDATE','')
