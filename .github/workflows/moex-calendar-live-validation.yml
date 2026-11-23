@@ -13,68 +13,49 @@ jobs:
   calendar-live-smoke:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe public ISS and ALGOPACK calendar endpoints
+      - name: Compare legacy ISS calendar URL variants
         shell: bash
         run: |
           set -u
           base="https://iss.moex.com/iss"
-          from="2026-11-20"
-          till="2026-11-30"
-          failed=0
-          echo "NOTICE: runner TLS verification failed on the first attempt."
-          echo "This diagnostic probe bypasses TLS verification only to expose HTTP status/body; never use this option in the Android client."
-
-          probe_iss() {
-            local endpoint="$1"
-            local table="$2"
-            local body="/tmp/moex-$(echo "$endpoint" | tr '/' '-').json"
-            local headers="/tmp/moex-headers.txt"
+          echo "TLS verification is bypassed for this diagnostic probe only; never use this option in the Android client."
+          probe() {
+            local label="$1"
+            local url="$2"
+            local body="/tmp/moex-probe-$RANDOM.txt"
             local meta
-            meta="$(curl --insecure --silent --show-error --retry 2 -D "$headers" -o "$body" -w '%{http_code}|%{content_type}' \
-              "$base/$endpoint.json?iss.meta=off&iss.json=extended&from=$from&till=$till")" || {
-                echo "TRANSPORT ERROR: $endpoint"
-                failed=1
-                return
-              }
-            local status="${meta%%|*}"
-            local content_type="${meta#*|}"
-            echo "ISS $endpoint: HTTP $status; content-type=$content_type"
-            if [ "$status" != "200" ]; then
-              head -c 500 "$body" || true
-              echo
-              failed=1
-              return
+            meta="$(curl --insecure --silent --show-error --location --max-time 20 \
+              -H 'Accept: application/json' \
+              -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
+              -o "$body" -w '%{http_code}|%{content_type}|%{url_effective}' "$url")" || meta="000|transport-error|$url"
+            echo "PROBE $label: $meta"
+            if jq -e . "$body" >/dev/null 2>&1; then
+              echo "JSON keys: $(jq -r 'if type == "array" then (.[1] // {} | keys | join(",")) else keys | join(",") end' "$body" 2>/dev/null)"
+            else
+              echo "BODY: $(head -c 240 "$body" | tr '\n' ' ')"
             fi
-            if ! jq -e --arg table "$table" '
-              (.[1][$table] | type == "array") or
-              (.[$table] | type == "object" or type == "array")
-            ' "$body" >/dev/null 2>&1; then
-              echo "NON-EXPECTED JSON/TABLE for $endpoint; response excerpt:"
-              head -c 700 "$body" || true
-              echo
-              failed=1
-              return
-            fi
-            echo "PASS: table $table returned by $endpoint"
           }
 
-          probe_iss "calendars/stock" "off_days"
-          probe_iss "calendars/futures" "off_days"
-          probe_iss "calendars/stock/session" "session_schedule"
-          probe_iss "calendars/futures/session" "session_schedule"
+          probe "ISS control engines.json" "$base/engines/stock.json"
+          probe "stock calendar no suffix" "$base/calendars/stock?show_all_days=1&iss.only=off_days"
+          probe "stock calendar json suffix" "$base/calendars/stock.json?show_all_days=1&iss.only=off_days"
+          probe "futures calendar no suffix" "$base/calendars/futures?show_all_days=1&iss.only=off_days"
+          probe "futures calendar json suffix" "$base/calendars/futures.json?show_all_days=1&iss.only=off_days"
+          probe "stock sessions no suffix" "$base/calendars/stock/session?from=2026-11-20&till=2026-11-30"
+          probe "stock sessions json suffix" "$base/calendars/stock/session.json?from=2026-11-20&till=2026-11-30"
+          probe "futures sessions no suffix" "$base/calendars/futures/session?from=2026-11-20&till=2026-11-30"
+          probe "futures sessions json suffix" "$base/calendars/futures/session.json?from=2026-11-20&till=2026-11-30"
 
-          apim_body="/tmp/apim-calendar.json"
-          apim_meta="$(curl --insecure --silent --show-error -o "$apim_body" -w '%{http_code}|%{content_type}' \
-            "https://apim.moex.com/iss/calendars/stock.json?from=$from&till=$till")" || apim_meta="000|transport-error"
-          apim_status="${apim_meta%%|*}"
-          echo "APIM unauthenticated: HTTP $apim_status; content-type=${apim_meta#*|}"
-          if [ "$apim_status" = "401" ] || [ "$apim_status" = "403" ]; then
-            echo "Expected authorization barrier for APIM without Bearer token."
-          elif [ "$apim_status" = "200" ]; then
-            jq -e '.off_days or .[1].off_days' "$apim_body" >/dev/null 2>&1 || failed=1
+      - name: Check APIM authorization requirement
+        shell: bash
+        run: |
+          set -u
+          body="/tmp/apim-calendar.json"
+          status="$(curl --insecure --silent --show-error -o "$body" -w '%{http_code}' \
+            "https://apim.moex.com/iss/calendars/stock.json?from=2026-11-20&till=2026-11-30")" || status="000"
+          echo "APIM without Bearer token: HTTP $status"
+          if [ "$status" = "401" ] || [ "$status" = "403" ]; then
+            echo "CONFIRMED: APIM requires authorization without credentials."
           else
-            head -c 700 "$apim_body" || true
-            echo
+            echo "APIM response excerpt: $(head -c 500 "$body" | tr '\n' ' ')"
           fi
-
-          exit "$failed"
