@@ -1,0 +1,58 @@
+name: MOEX calendar live validation
+
+on:
+  push:
+    branches:
+      - "feature/moex-calendar-live-validation"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  calendar-live-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe public legacy ISS calendar endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://iss.moex.com/iss"
+          from="2026-11-20"
+          till="2026-11-30"
+
+          probe_table() {
+            local endpoint="$1"
+            local table="$2"
+            local response
+            response="$(curl --fail --silent --show-error --retry 2 \
+              "$base/$endpoint.json?iss.meta=off&iss.json=extended&from=$from&till=$till")"
+            echo "$response" | jq -e --arg table "$table" '
+              (.[1][$table] | type == "array") or
+              (.[$table] | type == "object" or type == "array")
+            ' >/dev/null
+            echo "PASS: https://iss.moex.com/iss/$endpoint.json -> $table"
+          }
+
+          probe_table "calendars/stock" "off_days"
+          probe_table "calendars/futures" "off_days"
+          probe_table "calendars/stock/session" "session_schedule"
+          probe_table "calendars/futures/session" "session_schedule"
+
+      - name: Probe ALGOPACK calendar endpoint without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://apim.moex.com/iss/calendars/stock.json?from=2026-11-20&till=2026-11-30"
+          status="$(curl --silent --show-error --output /tmp/apim-calendar.json --write-out '%{http_code}' "$url")"
+          echo "APIM unauthenticated HTTP status: $status"
+          if [ "$status" = "200" ]; then
+            jq -e '.off_days or .[1].off_days' /tmp/apim-calendar.json >/dev/null
+            echo "APIM calendar endpoint is accessible without credentials."
+          elif [ "$status" = "401" ] || [ "$status" = "403" ]; then
+            echo "APIM calendar endpoint requires authorization; public ISS remains the candidate."
+          else
+            echo "Unexpected APIM response:"
+            head -c 1000 /tmp/apim-calendar.json || true
+            exit 1
+          fi
