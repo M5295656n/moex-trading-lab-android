@@ -20,12 +20,14 @@ jobs:
           base="https://iss.moex.com/iss"
           from="2026-11-20"
           till="2026-11-30"
+          echo "NOTICE: this diagnostic runner rejects the presented TLS chain."
+          echo "TLS verification is bypassed for this smoke probe only; never use this option in the Android client."
 
           probe_table() {
             local endpoint="$1"
             local table="$2"
             local response
-            response="$(curl --fail --silent --show-error --retry 2 \
+            response="$(curl --insecure --fail --silent --show-error --retry 2 \
               "$base/$endpoint.json?iss.meta=off&iss.json=extended&from=$from&till=$till")"
             echo "$response" | jq -e --arg table "$table" '
               (.[1][$table] | type == "array") or
@@ -44,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           url="https://apim.moex.com/iss/calendars/stock.json?from=2026-11-20&till=2026-11-30"
-          status="$(curl --silent --show-error --output /tmp/apim-calendar.json --write-out '%{http_code}' "$url")"
+          status="$(curl --insecure --silent --show-error --output /tmp/apim-calendar.json --write-out '%{http_code}' "$url")"
           echo "APIM unauthenticated HTTP status: $status"
           if [ "$status" = "200" ]; then
             jq -e '.off_days or .[1].off_days' /tmp/apim-calendar.json >/dev/null
