@@ -1,0 +1,83 @@
+package ru.moex.tradinglab.data.local
+
+import android.content.Context
+import android.database.sqlite.SQLiteDatabase
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.File
+
+@RunWith(AndroidJUnit4::class)
+class TradingLabDatabaseMigrationTest {
+    private lateinit var context: Context
+    private lateinit var database: TradingLabDatabase
+    private val databaseName = "migration-test.db"
+
+    @Before
+    fun setUp() {
+        context = ApplicationProvider.getApplicationContext()
+        context.getDatabasePath(databaseName).parentFile?.mkdirs()
+        context.deleteDatabase(databaseName)
+        val legacy = SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(databaseName), null)
+        legacy.execSQL("""
+            CREATE TABLE IF NOT EXISTS instruments (
+                secId TEXT NOT NULL PRIMARY KEY,
+                shortName TEXT NOT NULL,
+                instrumentType TEXT NOT NULL,
+                engine TEXT NOT NULL,
+                market TEXT NOT NULL,
+                source TEXT NOT NULL,
+                updatedAtEpochMillis INTEGER NOT NULL
+            )
+        """.trimIndent())
+        legacy.execSQL("""
+            INSERT INTO instruments VALUES ('SBER', 'Сбербанк', 'SHARES', 'stock', 'shares', 'MOEX ISS', 123)
+        """.trimIndent())
+        legacy.version = 1
+        legacy.close()
+
+        database = Room.databaseBuilder(context, TradingLabDatabase::class.java, databaseName)
+            .addMigrations(TradingLabDatabase.MIGRATION_1_2)
+            .build()
+    }
+
+    @After
+    fun tearDown() {
+        if (::database.isInitialized) database.close()
+        context.deleteDatabase(databaseName)
+    }
+
+    @Test
+    fun migrationPreservesLegacyRowsAndCreatesMarketTables() = runBlocking {
+        val legacyRows = database.openHelper.readableDatabase.query("SELECT * FROM instruments")
+        assertEquals(1, legacyRows.count)
+        legacyRows.moveToFirst()
+        assertEquals("SBER", legacyRows.getString(0))
+        legacyRows.close()
+
+        val instrument = MarketInstrumentEntity(
+            instrumentId = "SHARES:TQBR:SBER",
+            secId = "SBER",
+            name = "Сбербанк",
+            shortName = "Сбер",
+            isin = null,
+            boardId = "TQBR",
+            lotSize = 10.0,
+            currency = "RUB",
+            market = "SHARES",
+            source = "MOEX ISS",
+            rawFieldsJson = null,
+            fetchedAtEpochMillis = 456
+        )
+        database.marketDataDao().upsertInstruments(listOf(instrument))
+        assertNotNull(database.marketDataDao().getInstrument(instrument.instrumentId))
+        assertEquals(2, database.openHelper.readableDatabase.version)
+    }
+}
