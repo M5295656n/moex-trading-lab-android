@@ -12,6 +12,12 @@ interface MarketDataDao {
     @Query("SELECT * FROM market_instruments ORDER BY shortName COLLATE NOCASE")
     fun observeInstruments(): Flow<List<MarketInstrumentEntity>>
 
+    @Query("SELECT * FROM catalog_sync ORDER BY market")
+    fun observeCatalogSync(): Flow<List<CatalogSyncEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCatalogSync(item: CatalogSyncEntity)
+
     @Query("SELECT * FROM market_instruments WHERE instrumentId = :instrumentId LIMIT 1")
     suspend fun getInstrument(instrumentId: String): MarketInstrumentEntity?
 
