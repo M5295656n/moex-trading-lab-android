@@ -13,52 +13,37 @@ jobs:
   calendar-live-smoke:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe public ISS engine calendars and legacy calendar URL variants
+      - name: Inspect public engine timetable and daily exceptions
+        shell: bash
+        run: |
+          set -euo pipefail
+          for engine in stock futures; do
+            body="/tmp/moex-$engine-engine.json"
+            curl --insecure --fail --silent --show-error \
+              -H 'Accept: application/json' -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
+              "https://iss.moex.com/iss/engines/$engine.json?iss.meta=off&iss.json=extended" -o "$body"
+            echo "ENGINE $engine: HTTP 200; JSON keys=$(jq -r '.[1] | keys | join(",")' "$body")"
+            jq -r '.[1] as $d | ["dailytable","timetable","session_schedule","session_schedule.types"][] as $key | select($d[$key] != null) | "\($key): rows=\($d[$key]|length); first=\(($d[$key][0] // {})|tojson)"' "$body"
+          done
+
+      - name: Compare legacy calendar URLs and APIM authorization
         shell: bash
         run: |
           set -u
           base="https://iss.moex.com/iss"
-          echo "TLS verification is bypassed for this diagnostic probe only; never use this option in the Android client."
           probe() {
             local label="$1"
             local url="$2"
-            local body="/tmp/moex-probe-$RANDOM.json"
+            local body="/tmp/moex-probe-$RANDOM.txt"
             local meta
-            meta="$(curl --insecure --silent --show-error --location --max-time 20 \
-              -H 'Accept: application/json' -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
-              -o "$body" -w '%{http_code}|%{content_type}|%{url_effective}' "$url")" || meta="000|transport-error|$url"
-            echo "PROBE $label: $meta"
-            if jq -e . "$body" >/dev/null 2>&1; then
-              echo "JSON keys: $(jq -r 'if type == "array" then (.[1] // {} | keys | join(",")) else keys | join(",") end' "$body" 2>/dev/null)"
-              if [[ "$label" == *"engine"* ]]; then
-                jq -r '.[1] // . | to_entries[] | select(.key=="dailytable" or .key=="timetable") | "\(.key): columns=\(.value.columns|join(",")); sample=\((.value.data[0] // [])|tostring)"' "$body" 2>/dev/null || true
-              fi
-            else
-              echo "BODY: $(head -c 240 "$body" | tr '\n' ' ')"
-            fi
+            meta="$(curl --insecure --silent --show-error --location --max-time 20 -H 'Accept: application/json' \
+              -o "$body" -w '%{http_code}|%{content_type}' "$url")" || meta="000|transport-error"
+            echo "$label: $meta; $(head -c 100 "$body" | tr '\n' ' ')"
           }
-
-          probe "ISS stock engine calendar" "$base/engines/stock.json"
-          probe "ISS futures engine calendar" "$base/engines/futures.json"
-          probe "stock calendar no suffix" "$base/calendars/stock?show_all_days=1&iss.only=off_days"
-          probe "stock calendar json suffix" "$base/calendars/stock.json?show_all_days=1&iss.only=off_days"
-          probe "futures calendar no suffix" "$base/calendars/futures?show_all_days=1&iss.only=off_days"
-          probe "futures calendar json suffix" "$base/calendars/futures.json?show_all_days=1&iss.only=off_days"
-          probe "stock sessions no suffix" "$base/calendars/stock/session?from=2026-11-20&till=2026-11-30"
-          probe "stock sessions json suffix" "$base/calendars/stock/session.json?from=2026-11-20&till=2026-11-30"
-          probe "futures sessions no suffix" "$base/calendars/futures/session?from=2026-11-20&till=2026-11-30"
-          probe "futures sessions json suffix" "$base/calendars/futures/session.json?from=2026-11-20&till=2026-11-30"
-
-      - name: Check APIM authorization requirement
-        shell: bash
-        run: |
-          set -u
-          body="/tmp/apim-calendar.json"
-          status="$(curl --insecure --silent --show-error -o "$body" -w '%{http_code}' \
+          probe "stock calendar" "$base/calendars/stock.json?show_all_days=1&iss.only=off_days"
+          probe "futures calendar" "$base/calendars/futures.json?show_all_days=1&iss.only=off_days"
+          probe "stock sessions" "$base/calendars/stock/session.json?from=2026-11-20&till=2026-11-30"
+          probe "futures sessions" "$base/calendars/futures/session.json?from=2026-11-20&till=2026-11-30"
+          status="$(curl --insecure --silent --show-error -o /tmp/apim.json -w '%{http_code}' \
             "https://apim.moex.com/iss/calendars/stock.json?from=2026-11-20&till=2026-11-30")" || status="000"
-          echo "APIM without Bearer token: HTTP $status"
-          if [ "$status" = "401" ] || [ "$status" = "403" ]; then
-            echo "CONFIRMED: APIM requires authorization without credentials."
-          else
-            echo "APIM response excerpt: $(head -c 500 "$body" | tr '\n' ' ')"
-          fi
+          echo "APIM without token: HTTP $status"
