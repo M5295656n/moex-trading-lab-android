@@ -154,6 +154,52 @@ jobs:
                   if info.is_dir(): continue
                   raw=z.read(info)
                   print(f'FILE={info.filename} BYTES={len(raw)} PREFIX={raw[:180]!r}')
+                  if info.filename.lower().endswith('.dbf'):
+                      import struct
+                      header=raw[:32]
+                      declared=struct.unpack('<I',header[4:8])[0]
+                      header_len=struct.unpack('<H',header[8:10])[0]
+                      record_len=struct.unpack('<H',header[10:12])[0]
+                      fields=[]
+                      pos=32
+                      while pos < header_len and raw[pos] != 0x0D:
+                          desc=raw[pos:pos+32]
+                          name=desc[:11].split(b'\\x00',1)[0].decode('ascii','replace').strip()
+                          typ=chr(desc[11])
+                          size=desc[16]
+                          decimals=desc[17]
+                          fields.append((name,typ,size,decimals))
+                          pos+=32
+                      print('DBF_HEADER=',json.dumps({'version':header[0],'declared_records':declared,'header_bytes':header_len,'record_bytes':record_len,'fields':fields},ensure_ascii=False))
+                      actual=(len(raw)-header_len)//record_len if record_len else 0
+                      print('DBF_PHYSICAL_RECORDS=',actual)
+                      rows=[]; boards=set(); securities=set(); dates=[]; keys=collections.Counter()
+                      for i in range(min(declared,actual)):
+                          rec=raw[header_len+i*record_len:header_len+(i+1)*record_len]
+                          if not rec or rec[0:1]==b'*': continue
+                          offset=1; row={}
+                          for name,typ,size,decimals in fields:
+                              value=rec[offset:offset+size]; offset+=size
+                              if typ=='D':
+                                  v=value.decode('ascii','ignore').strip()
+                                  v=f'{v[:4]}-{v[4:6]}-{v[6:8]}' if len(v)==8 and v.isdigit() else v
+                              else:
+                                  v=value.decode('cp1251','replace').strip()
+                              row[name]=v
+                          rows.append(row)
+                          d=row.get('TRADEDATE','')
+                          b=row.get('BOARDID','')
+                          s=row.get('SECURITYID','')
+                          if d: dates.append(d)
+                          if b: boards.add(b)
+                          if s: securities.add(s)
+                          if d and b and s: keys[(d,b,s)]+=1
+                      print('DBF_ACTIVE_ROWS=',len(rows),'DATE_MIN=',min(dates) if dates else None,'DATE_MAX=',max(dates) if dates else None)
+                      print('DBF_UNIQUE_BOARD_IDS=',len(boards),sorted(boards))
+                      print('DBF_UNIQUE_SECURITY_IDS=',len(securities))
+                      print('DBF_DUPLICATE_DATE_BOARD_SECURITY_KEYS=',sum(1 for v in keys.values() if v>1))
+                      print('DBF_ROW_SAMPLE=',json.dumps(rows[:5],ensure_ascii=False))
+                      continue
                   if not (info.filename.lower().endswith(('.csv','.txt','.tsv'))): continue
                   text=None
                   for enc in ('utf-8-sig','cp1251','utf-8'):
