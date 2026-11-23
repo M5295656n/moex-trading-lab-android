@@ -23,7 +23,20 @@ jobs:
               -H 'Accept: application/json' -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
               "https://iss.moex.com/iss/engines/$engine.json?iss.meta=off&iss.json=extended" -o "$body"
             echo "ENGINE $engine: HTTP 200; JSON keys=$(jq -r '.[1] | keys | join(",")' "$body")"
-            jq -r '.[1] as $d | ["dailytable","timetable","session_schedule","session_schedule.types"][] as $key | select($d[$key] != null) | "\($key): rows=\($d[$key]|length); first=\(($d[$key][0] // {})|tojson)"' "$body"
+            for table in timetable dailytable session_schedule; do
+              if jq -e --arg table "$table" '.[1][$table] != null' "$body" >/dev/null; then
+                echo "$engine.$table columns=$(jq -r --arg table "$table" '.[1][$table][0] | keys | join(",")' "$body") rows=$(jq -r --arg table "$table" '.[1][$table] | length' "$body")"
+                if [ "$table" = "timetable" ]; then
+                  jq -c '.[1].timetable[]' "$body"
+                elif [ "$table" = "dailytable" ]; then
+                  echo "Daily exception records from 2025 onward:"
+                  jq -c '.[1].dailytable[] | select(.date >= "2025-01-01")' "$body"
+                else
+                  echo "Futures session schedule records:"
+                  jq -c '.[1].session_schedule[]' "$body"
+                fi
+              fi
+            done
           done
 
       - name: Compare legacy calendar URLs and APIM authorization
