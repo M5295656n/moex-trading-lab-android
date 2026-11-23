@@ -68,11 +68,8 @@ object MarketDataFreshnessEvaluator {
             return FreshnessReport(status, null, latestObserved, nowText)
         }
 
-        val observedDateTime = latestObserved?.let {
-            runCatching { LocalDateTime.parse(it, formatter) }.getOrNull()
-        }
-        val expectedDateTime = latestCompleted.second
-        val status = if (observedDateTime != null && !observedDateTime.isBefore(expectedDateTime)) {
+        // A later but unexpected timestamp must not hide a missing expected candle.
+        val status = if (observedStarts.contains(latestCompleted.first)) {
             MarketDataFreshness.FRESH
         } else {
             MarketDataFreshness.STALE
