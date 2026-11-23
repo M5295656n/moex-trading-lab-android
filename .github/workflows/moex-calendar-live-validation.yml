@@ -21,7 +21,7 @@ jobs:
             body="/tmp/moex-$engine-engine.json"
             curl --insecure --fail --silent --show-error \
               -H 'Accept: application/json' -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
-              "https://iss.moex.com/iss/engines/$engine.json?iss.meta=off&iss.json=extended" -o "$body"
+              "https://iss.moex.com/iss/engines/$engine?iss.meta=off&iss.json=extended" -o "$body"
             echo "ENGINE $engine: HTTP 200; JSON keys=$(jq -r '.[1] | keys | join(",")' "$body")"
             for table in timetable dailytable session_schedule; do
               if jq -e --arg table "$table" '.[1][$table] != null' "$body" >/dev/null; then
