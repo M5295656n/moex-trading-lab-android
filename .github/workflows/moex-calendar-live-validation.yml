@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - "feature/moex-calendar-live-validation"
+      - "feature/moex-calendar-access-research"
+      - "feature/moex-iss-data-foundation"
   workflow_dispatch:
 
 permissions:
