@@ -18,6 +18,8 @@ class MoexEngineCalendarParserTest {
                 "start_time" to "06:20:00", "stop_time" to "23:59:59"),
             row("week_day" to "7", "is_work_day" to "1",
                 "start_time" to "06:20:00", "stop_time" to "23:59:59")
+            ,row("week_day" to "1", "is_work_day" to "1",
+                "start_time" to "06:20:00", "stop_time" to "23:59:59")
         )
         val exceptions = listOf(
             row("date" to "2026-11-21", "is_work_day" to "0",
