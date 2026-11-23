@@ -14,8 +14,7 @@ import ru.moex.tradinglab.data.remote.MoexMarket
  */
 class MoexMarketDataSync(
     private val remote: MoexIssDataRepository,
-    private val storage: MarketDataStorage,
-    private val latestCandleProvider: LatestCandleProvider
+    private val storage: MarketDataStorage
 ) {
     suspend fun syncCatalog(
         market: MoexMarket,
@@ -67,9 +66,9 @@ class MoexMarketDataSync(
 
     /**
      * Refreshes an existing series from its last stored candle, inclusive.
-     * Re-fetching that boundary candle allows MOEX to correct a still-forming
-     * candle; Room's composite key replaces it without duplicating history.
-     * When no local candle exists, initialFrom is used (null means ISS default).
+     * Re-fetching that boundary candle lets ISS correct a still-forming candle;
+     * Room's composite key replaces it without duplicating history. For an empty
+     * local series, initialFrom is used (null means ISS default history range).
      */
     suspend fun syncInstrumentHistoryIncrementally(
         instrument: IssInstrument,
@@ -79,10 +78,11 @@ class MoexMarketDataSync(
         pageSize: Int = MoexIssDataRepository.DEFAULT_PAGE_SIZE,
         maxPages: Int = MoexIssDataRepository.DEFAULT_MAX_PAGES
     ): IssHistoryResult {
+        require(intervalMinutes in SUPPORTED_INTERVALS) { "Unsupported MOEX candle interval: " + intervalMinutes }
         val instrumentId = MarketDataEntityMapper.instrumentId(
             instrument.secId, instrument.market.name, instrument.boardId
         )
-        val lastStoredBegin = latestCandleProvider.latestBegin(instrumentId, intervalMinutes)
+        val lastStoredBegin = storage.latestCandleBegin(instrumentId, intervalMinutes)
         val from = IncrementalHistoryPlanner.nextFrom(lastStoredBegin, initialFrom)
         return syncInstrumentHistory(
             instrument = instrument,
@@ -100,13 +100,8 @@ class MoexMarketDataSync(
     }
 }
 
-/** Small persistence read boundary keeps incremental planning independently testable. */
-fun interface LatestCandleProvider {
-    suspend fun latestBegin(instrumentId: String, intervalMinutes: Int): String?
-}
-
+/** Pure boundary selection, intentionally inclusive to refresh the last stored candle. */
 object IncrementalHistoryPlanner {
-    /** Existing boundary is inclusive; otherwise start with the caller's initial range. */
     fun nextFrom(lastStoredBegin: String?, initialFrom: String?): String? =
         lastStoredBegin?.takeIf(String::isNotBlank) ?: initialFrom?.takeIf(String::isNotBlank)
 }
