@@ -25,11 +25,13 @@ class MoexIssClient(
 ) {
     suspend fun getTable(
         endpoint: String,
-        query: Map<String, String> = emptyMap()
+        query: Map<String, String> = emptyMap(),
+        tableName: String = endpoint.substringAfterLast('/').substringBefore('.')
     ): IssTable = withContext(Dispatchers.IO) {
         val normalizedEndpoint = endpoint.trimStart('/')
         require(normalizedEndpoint.isNotBlank()) { "ISS endpoint must not be blank" }
         require(!normalizedEndpoint.contains("..")) { "Invalid ISS endpoint" }
+        require(tableName.matches(Regex("[A-Za-z0-9_.]+"))) { "Invalid ISS table name" }
 
         val urlBuilder = baseUrl.newBuilder()
             .addPathSegments(normalizedEndpoint)
@@ -50,7 +52,7 @@ class MoexIssClient(
                 throw MoexIssException.Http(response.code, body.take(500))
             }
             if (body.isBlank()) throw MoexIssException.InvalidResponse("Empty ISS response")
-            IssJsonDecoder.decode(body, normalizedEndpoint)
+            IssJsonDecoder.decode(body, normalizedEndpoint, tableName = tableName)
         }
     }
 
@@ -87,7 +89,8 @@ internal object IssJsonDecoder {
     fun decode(
         json: String,
         endpoint: String,
-        fetchedAtEpochMillis: Long = System.currentTimeMillis()
+        fetchedAtEpochMillis: Long = System.currentTimeMillis(),
+        tableName: String = endpoint.substringAfterLast('/').substringBefore('.')
     ): IssTable {
         val root = try {
             JsonParser.parseString(json)
@@ -95,7 +98,6 @@ internal object IssJsonDecoder {
             throw MoexIssException.InvalidResponse("ISS response is not valid JSON")
         }
 
-        val tableName = endpoint.substringAfterLast('/').substringBefore('.')
         val table = findTable(root, tableName)
             ?: throw MoexIssException.InvalidResponse("No table '$tableName' in ISS response")
 
