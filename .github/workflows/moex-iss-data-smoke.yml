@@ -49,7 +49,7 @@ jobs:
             local endpoint="$4"
             local response
             response="$(curl --insecure --fail --silent --show-error --retry 2 \
-              "https://iss.moex.com/iss/${endpoint}/${secid}/candles.json?iss.meta=off&from=${from_date}&till=${till_date}&interval=${interval}&start=0&limit=5")"
+              "https://iss.moex.com/iss/${endpoint}/${secid}/candles.json?iss.meta=off&from=${from_date}&till=${till_date}&interval=${interval}&start=0&limit=500")"
 
             echo "$response" | jq -e '
               .candles.columns as $columns
@@ -64,6 +64,23 @@ jobs:
               exit 1
             fi
             echo "OK: market=$market secid=$secid interval=$interval rows=$row_count"
+
+            # Explicitly validate offset pagination on a sufficiently dense series.
+            if [ "$market" = "shares" ] && [ "$secid" = "SBER" ] && [ "$interval" = "1" ] && [ "$row_count" -eq 500 ]; then
+              local begin_index
+              local last_begin
+              local next_page
+              begin_index="$(echo "$response" | jq '.candles.columns | index("begin")')"
+              last_begin="$(echo "$response" | jq -r --argjson idx "$begin_index" '.candles.data[-1][$idx]')"
+              next_page="$(curl --insecure --fail --silent --show-error --retry 2 \\
+                "https://iss.moex.com/iss/${endpoint}/${secid}/candles.json?iss.meta=off&from=${from_date}&till=${till_date}&interval=${interval}&start=500&limit=500")"
+              echo "$next_page" | jq -e --arg last "$last_begin" --argjson idx "$begin_index" '
+                .candles.data as $rows
+                | ($rows | type == "array" and length > 0)
+                  and ($rows[0][$idx] > $last)
+              ' >/dev/null
+              echo "OK: SBER interval=1 pagination start=500 continues after $last_begin"
+            fi
           }
 
           # Representative liquid share, active futures contract and broad index.
