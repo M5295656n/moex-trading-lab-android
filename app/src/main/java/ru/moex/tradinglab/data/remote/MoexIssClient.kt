@@ -33,8 +33,15 @@ class MoexIssClient(
         require(!normalizedEndpoint.contains("..")) { "Invalid ISS endpoint" }
         require(tableName.matches(Regex("[A-Za-z0-9_.]+"))) { "Invalid ISS table name" }
 
+        // ISS returns machine-readable payloads on the explicit .json route.
+        // Keep the logical endpoint (without suffix) in metadata and decoder diagnostics.
+        val requestEndpoint = if (normalizedEndpoint.endsWith(".json")) {
+            normalizedEndpoint
+        } else {
+            "$normalizedEndpoint.json"
+        }
         val urlBuilder = baseUrl.newBuilder()
-            .addPathSegments(normalizedEndpoint)
+            .addPathSegments(requestEndpoint)
             .addQueryParameter("iss.meta", "off")
             .addQueryParameter("iss.json", "extended")
         query.forEach { (key, value) -> urlBuilder.addQueryParameter(key, value) }
