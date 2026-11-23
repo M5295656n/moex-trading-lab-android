@@ -2,6 +2,7 @@ package ru.moex.tradinglab.data.local
 
 import ru.moex.tradinglab.data.remote.IssCatalogResult
 import ru.moex.tradinglab.data.remote.IssHistoryResult
+import ru.moex.tradinglab.data.remote.IssInstrument
 
 /**
  * Persistence boundary for validated MOEX ISS results. Network fetching stays in
@@ -17,11 +18,14 @@ class MarketDataStorage(
     }
 
     suspend fun saveInstrument(
-        instrument: ru.moex.tradinglab.data.remote.IssInstrument,
+        instrument: IssInstrument,
         fetchedAtEpochMillis: Long = System.currentTimeMillis()
     ) {
         dao.upsertInstruments(listOf(MarketDataEntityMapper.instrument(instrument, fetchedAtEpochMillis)))
     }
+
+    suspend fun latestCandleBegin(instrumentId: String, intervalMinutes: Int): String? =
+        dao.getLatestCandleBegin(instrumentId, intervalMinutes)
 
     suspend fun saveHistory(
         instrumentId: String,
