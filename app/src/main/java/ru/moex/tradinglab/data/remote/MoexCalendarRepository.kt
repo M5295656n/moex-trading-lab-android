@@ -38,9 +38,15 @@ class MoexCalendarRepository(private val client: MoexIssClient) {
             mapOf("from" to from.toString(), "till" to till.toString())
         )
         return table.rows.mapNotNull { row ->
-            val date = row.date("tradedate") ?: return@mapNotNull null
-            val flag = row.string("is_traded")?.toIntOrNull()?.let { it == 1 }
-            MoexTradingDay(date, flag, row.string("reason"))
+            val date = row.string("tradedate")?.let {
+                runCatching { LocalDate.parse(it.take(10)) }.getOrNull()
+            } ?: return@mapNotNull null
+            val isTraded = when (row.string("is_traded")?.toIntOrNull()) {
+                0 -> false
+                1 -> true
+                else -> null
+            }
+            MoexTradingDay(date, isTraded, row.string("reason"))
         }
     }
 
@@ -61,44 +67,58 @@ class MoexCalendarRepository(private val client: MoexIssClient) {
             boardId?.let { put("boardid", it) }
         }
         val table = client.getTable("calendars/${market.path}/session", query)
-        return table.rows.mapNotNull { it.toSessionPeriod(market) }
-            .sortedBy(MoexSessionPeriod::startsAt)
-    }
-
-    private fun Map<String, JsonElement?>.toSessionPeriod(market: CalendarMarket): MoexSessionPeriod? {
-        val tradeDate = date("tradedate") ?: return null
-        val type = string("type")?.takeIf(String::isNotBlank) ?: return null
-        val startsAt = dateTime("time_from", market) ?: return null
-        val endsAt = dateTime("time_till", market) ?: return null
-        if (!endsAt.isAfter(startsAt)) return null
-        return MoexSessionPeriod(
-            tradeDate = tradeDate,
-            session = string("tradingsession")?.toIntOrNull(),
-            boardId = string("boardid")?.takeUnless { it == "-" || it.isBlank() },
-            secId = string("secid")?.takeUnless { it == "-" || it.isBlank() },
-            type = type,
-            startsAt = startsAt,
-            endsAt = endsAt
-        )
+        return table.rows.mapNotNull { row ->
+            val values = row.mapValues { (_, value) ->
+                value?.takeUnless(JsonElement::isJsonNull)?.asString
+            }
+            MoexCalendarRowParser.parse(values, market)?.let { parsed ->
+                MoexSessionPeriod(
+                    tradeDate = parsed.tradeDate,
+                    session = values["tradingsession"]?.toIntOrNull(),
+                    boardId = values["boardid"]?.takeUnless { it == "-" || it.isBlank() },
+                    secId = values["secid"]?.takeUnless { it == "-" || it.isBlank() },
+                    type = parsed.type,
+                    startsAt = parsed.startsAt,
+                    endsAt = parsed.endsAt
+                )
+            }
+        }.sortedBy(MoexSessionPeriod::startsAt)
     }
 
     private fun Map<String, JsonElement?>.string(key: String): String? =
         this[key]?.takeUnless(JsonElement::isJsonNull)?.asString
+}
 
-    private fun Map<String, JsonElement?>.date(key: String): LocalDate? =
-        string(key)?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() }
+/** Parser shared by the network adapter and deterministic unit tests. */
+internal object MoexCalendarRowParser {
+    data class Parsed(
+        val tradeDate: LocalDate,
+        val type: String,
+        val startsAt: LocalDateTime,
+        val endsAt: LocalDateTime
+    )
 
-    private fun Map<String, JsonElement?>.dateTime(key: String, market: CalendarMarket): LocalDateTime? {
-        val value = string(key) ?: return null
-        return runCatching {
-            when {
-                value.length >= 19 -> LocalDateTime.parse(value.take(19).replace(' ', 'T'))
-                market == CalendarMarket.SHARES -> {
-                    val date = date("tradedate") ?: return null
-                    LocalDateTime.of(date, LocalTime.parse(value))
+    fun parse(row: Map<String, String?>, market: CalendarMarket): Parsed? {
+        val date = row["tradedate"]?.let {
+            runCatching { LocalDate.parse(it.take(10)) }.getOrNull()
+        } ?: return null
+        val type = row["type"]?.takeIf(String::isNotBlank) ?: return null
+
+        fun parseTime(key: String): LocalDateTime? {
+            val value = row[key] ?: return null
+            return runCatching {
+                when {
+                    value.length >= 19 -> LocalDateTime.parse(value.take(19).replace(' ', 'T'))
+                    market == CalendarMarket.SHARES ->
+                        LocalDateTime.of(date, LocalTime.parse(value))
+                    else -> null
                 }
-                else -> null
-            }
-        }.getOrNull()
+            }.getOrNull()
+        }
+
+        val start = parseTime("time_from") ?: return null
+        val end = parseTime("time_till") ?: return null
+        if (!end.isAfter(start)) return null
+        return Parsed(date, type, start, end)
     }
 }
