@@ -47,12 +47,7 @@ class BreakoutBacktestEngineTest {
             BacktestTrade("a", "b", 100.0, 110.0, 1, 10.0, 1.0, 9.0, BacktestExitReason.TAKE_PROFIT),
             BacktestTrade("c", "d", 100.0, 90.0, 1, -10.0, 1.0, -11.0, BacktestExitReason.STOP_LOSS)
         )
-        val method = BreakoutBacktestEngine::class.java.getDeclaredMethod(
-            "calculateMetrics", Double::class.javaPrimitiveType, Double::class.javaPrimitiveType,
-            List::class.java, Double::class.javaPrimitiveType
-        )
-        method.isAccessible = true
-        val metrics = method.invoke(BreakoutBacktestEngine, 1_000.0, 998.0, trades, 5.0) as BacktestMetrics
+        val metrics = BreakoutBacktestEngine.calculateMetrics(1_000.0, 998.0, trades, 5.0)
         assertEquals(50.0, metrics.winRatePercent, 1e-9)
         assertEquals(9.0, metrics.averageWin, 1e-9)
         assertEquals(-11.0, metrics.averageLoss, 1e-9)
