@@ -3,63 +3,112 @@ package ru.moex.tradinglab
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.Card
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.room.Room
+import ru.moex.tradinglab.data.local.MarketDataStorage
+import ru.moex.tradinglab.data.local.TradingLabDatabase
+import ru.moex.tradinglab.data.remote.MoexIssClient
+import ru.moex.tradinglab.data.remote.MoexIssDataRepository
+import ru.moex.tradinglab.data.sync.MoexMarketDataSync
+import ru.moex.tradinglab.ui.ChartScreen
+import ru.moex.tradinglab.ui.MarketDataDiagnosticsScreen
 import ru.moex.tradinglab.ui.theme.MoexTradingLabTheme
 
+private enum class MainTab(val title: String) {
+    CHART("График"),
+    DATA("Данные")
+}
+
 class MainActivity : ComponentActivity() {
+    private val database by lazy {
+        Room.databaseBuilder(
+            applicationContext,
+            TradingLabDatabase::class.java,
+            "moex-trading-lab.db"
+        )
+            .addMigrations(
+                TradingLabDatabase.MIGRATION_1_2,
+                TradingLabDatabase.MIGRATION_2_3
+            )
+            .build()
+    }
+
+    private val marketDataSync by lazy {
+        MoexMarketDataSync(
+            remote = MoexIssDataRepository(MoexIssClient()),
+            storage = MarketDataStorage(database.marketDataDao())
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MoexTradingLabTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    FoundationScreen()
-                }
+                TradingLabRoot(
+                    database = database,
+                    sync = marketDataSync
+                )
             }
         }
     }
 }
 
 @Composable
-private fun FoundationScreen() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "MOEX Trading Lab",
-            style = MaterialTheme.typography.headlineMedium
-        )
-        Card(modifier = Modifier.padding(top = 20.dp)) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Text("Основа приложения создана")
-                Text(
-                    text = "Следующий этап — подключение и проверка данных MOEX ISS.",
-                    modifier = Modifier.padding(top = 8.dp),
-                    style = MaterialTheme.typography.bodyMedium
-                )
+private fun TradingLabRoot(
+    database: TradingLabDatabase,
+    sync: MoexMarketDataSync
+) {
+    var selectedTab by rememberSaveable { mutableIntStateOf(MainTab.CHART.ordinal) }
+    val dao = database.marketDataDao()
+
+    MaterialTheme {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            bottomBar = {
+                NavigationBar {
+                    MainTab.entries.forEachIndexed { index, tab ->
+                        NavigationBarItem(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            icon = { Text(if (tab == MainTab.CHART) "▥" else "☷") },
+                            label = { Text(tab.title) }
+                        )
+                    }
+                }
+            }
+        ) { innerPadding ->
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier.fillMaxSize().padding(innerPadding)
+                ) {
+                    when (MainTab.entries[selectedTab]) {
+                        MainTab.CHART -> ChartScreen(
+                            dao = dao,
+                            onOpenDiagnostics = { selectedTab = MainTab.DATA.ordinal }
+                        )
+                        MainTab.DATA -> MarketDataDiagnosticsScreen(
+                            dao = dao,
+                            sync = sync
+                        )
+                    }
+                }
             }
         }
-        Text(
-            text = "Версия 1.0.0 · build 1",
-            modifier = Modifier.padding(top = 20.dp),
-            style = MaterialTheme.typography.labelMedium
-        )
     }
 }
