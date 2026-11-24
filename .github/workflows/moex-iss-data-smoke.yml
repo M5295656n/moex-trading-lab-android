@@ -14,6 +14,30 @@ jobs:
   iss-smoke:
     runs-on: ubuntu-latest
     steps:
+      - name: Install official Russian NCA root certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/russian_nca_root.zip"
+          extract_dir="$RUNNER_TEMP/russian_nca_root"
+          curl --fail --silent --show-error --location --retry 2 \
+            "https://gu-st.ru/content/lending/windows_russian_trusted_root_ca.zip" \
+            --output "$archive"
+          mkdir -p "$extract_dir"
+          unzip -q "$archive" -d "$extract_dir"
+          certificate="$(find "$extract_dir" -type f -iname 'Russian Trusted Root CA.cer' -print -quit)"
+          if [ -z "$certificate" ]; then
+            echo "Official NCA archive does not contain Russian Trusted Root CA.cer" >&2
+            unzip -l "$archive" >&2
+            exit 1
+          fi
+          openssl x509 -inform DER -in "$certificate" -noout -subject -issuer -ext basicConstraints
+          openssl x509 -inform DER -in "$certificate" -noout -subject | grep -qi "Russian Trusted Root CA"
+          openssl x509 -inform DER -in "$certificate" -noout -ext basicConstraints | grep -q "CA:TRUE"
+          openssl x509 -inform DER -in "$certificate" -out "$RUNNER_TEMP/russian_trusted_root_ca.crt"
+          sudo install -m 0644 "$RUNNER_TEMP/russian_trusted_root_ca.crt" /usr/local/share/ca-certificates/russian_trusted_root_ca.crt
+          sudo update-ca-certificates
+
       - name: Check catalog endpoints
         shell: bash
         run: |
