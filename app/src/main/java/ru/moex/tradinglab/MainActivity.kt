@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -94,7 +95,7 @@ private fun TradingLabRoot(
                 color = MaterialTheme.colorScheme.background
             ) {
                 androidx.compose.foundation.layout.Box(
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize().padding(innerPadding)
                 ) {
                     when (MainTab.entries[selectedTab]) {
                         MainTab.CHART -> ChartScreen(
