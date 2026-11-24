@@ -2,53 +2,59 @@
 
 ## Зачем
 
-Все устанавливаемые обновления приложения `ru.moex.tradinglab` должны быть подписаны одним и тем же приватным ключом. Debug APK из CI предназначен только для диагностики и не является установочным релизом.
+Все устанавливаемые обновления приложения `ru.moex.tradinglab` должны подписываться одним и тем же приватным ключом. Debug APK из CI предназначен только для диагностики и не является установочным релизом.
 
-Текущая версия после исправления: `versionName=1.0.1`, `versionCode=2`. Идентификатор приложения сохранён: `ru.moex.tradinglab`.
+Текущая версия: `versionName=1.0.1`, `versionCode=2`. Идентификатор приложения сохранён: `ru.moex.tradinglab`.
 
-## Однократное создание ключа
+## Используем существующий ключ MyCapital
 
-Создайте отдельный каталог для ключа вне Git-репозитория и выполните команду:
+Новый ключ создавать не нужно. Для MOEX Trading Lab используется тот же файл `my-capital-signing.jks`, который уже применяется в сборках MyCapital.
 
-```bash
-keytool -genkeypair -v \
-  -keystore moex-trading-lab-release.jks \
-  -alias moex-trading-lab \
-  -keyalg RSA -keysize 4096 -validity 10000
-```
+Контрольный SHA-256 сертификата:
+`77FE78460534AC46DA9A42B03435DEF8CC5D2D6D3CC67C7D3C6C8FD35008FD66`.
 
-Задайте надёжные пароли. Не отправляйте их в чат, не добавляйте файл JKS в Git и не храните единственную копию на телефоне. Сделайте минимум две резервные копии JKS в защищённых местах. Потеря ключа лишит возможности выпускать обновления поверх установленной версии.
+В MyCapital текущая конфигурация использует следующие GitHub Secrets:
+- `ANDROID_KEYSTORE_BASE64` — Base64 содержимого JKS;
+- `ANDROID_KEYSTORE_PASSWORD` — пароль хранилища;
+- `ANDROID_KEY_ALIAS` — alias;
+- `ANDROID_KEY_PASSWORD` — пароль приватного ключа.
 
-## Настройка GitHub Actions secrets
+GitHub не показывает сохранённые значения секретов повторно. Для MOEX Trading Lab нужно создать отдельные repository secrets с префиксом `MOEX_RELEASE_`, используя те же значения. Не пытайтесь получить пароли из логов и не публикуйте их.
 
-В репозитории откройте **Settings → Secrets and variables → Actions → New repository secret** и создайте четыре секрета:
+## Подготовка четырёх секретов MOEX Trading Lab
 
-- `MOEX_RELEASE_KEYSTORE_BASE64` — содержимое JKS, закодированное Base64 одной строкой.
-- `MOEX_RELEASE_STORE_PASSWORD` — пароль хранилища.
-- `MOEX_RELEASE_KEY_ALIAS` — `moex-trading-lab` (или фактически выбранный alias).
-- `MOEX_RELEASE_KEY_PASSWORD` — пароль приватного ключа.
+Откройте репозиторий **M5295656N/moex-trading-lab-android** → **Settings → Secrets and variables → Actions → New repository secret**.
 
-Linux/macOS: получить Base64 можно командой `base64 -w 0 moex-trading-lab-release.jks` (на macOS используйте `base64 < moex-trading-lab-release.jks | tr -d '\\n'`).
+Создайте:
 
-PowerShell:
+- `MOEX_RELEASE_KEYSTORE_BASE64` — Base64 существующего файла `my-capital-signing.jks`;
+- `MOEX_RELEASE_STORE_PASSWORD` — то же значение, что `ANDROID_KEYSTORE_PASSWORD` в MyCapital;
+- `MOEX_RELEASE_KEY_ALIAS` — то же значение, что `ANDROID_KEY_ALIAS` в MyCapital;
+- `MOEX_RELEASE_KEY_PASSWORD` — то же значение, что `ANDROID_KEY_PASSWORD` в MyCapital.
+
+Для получения Base64 из локального файла в PowerShell выполните:
+
 ```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("moex-trading-lab-release.jks"))
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("ПОЛНЫЙ_ПУТЬ_К_ФАЙЛУ\\my-capital-signing.jks"))
 ```
 
-Вставьте полученную строку только в значение секрета GitHub. Не публикуйте её в Issues, Pull Requests или чате.
+Скопируйте результат непосредственно в значение секрета `MOEX_RELEASE_KEYSTORE_BASE64`. Не вставляйте его в чат, Issue или Pull Request.
+
+Пароли и alias нельзя восстановить из Base64-файла или из SHA-256 отпечатка сертификата. Если они не сохранены в менеджере паролей или других личных записях, остановитесь: не создавайте новый ключ и не меняйте настройки подписи MyCapital.
 
 ## Сборка и проверка
 
-После добавления всех четырёх secrets GitHub Actions автоматически:
+После настройки четырёх секретов GitHub Actions:
 1. Восстановит JKS во временный каталог runner.
-2. Соберёт Release APK с постоянной подписью.
+2. Соберёт Release APK с существующим ключом MyCapital.
 3. Проверит подпись, package name, versionCode и versionName.
-4. Опубликует артефакт `moex-trading-lab-release-v1.0.1`.
+4. Сверит SHA-256 сертификата с контрольным отпечатком выше.
+5. Опубликует артефакт `moex-trading-lab-release-v1.0.1`.
 
 Debug APK с именем `moex-trading-lab-debug-diagnostics` не устанавливайте поверх Release и не используйте для обновления.
 
-## Важное ограничение для первой переустановки
+## Важное ограничение для первой установки Release
 
-Новый ключ будет новым ключом подписи: прежний CI debug keystore не был сохранён. Поэтому уже установленную сборку Android не позволит обновить новым APK. Пользователь подтвердил, что удалит старую установку. Удаление приложения обычно удаляет и его локальную базу Room; перед удалением следует сохранить нужные данные, если в приложении появится экспорт.
+Ранее выданный CI Debug APK подписан другим временным ключом. Android не позволит обновить его Release APK, даже если Release использует общий ключ MyCapital. Перед удалением старого приложения сохраните нужные данные: удаление приложения обычно удаляет и локальную базу Room.
 
-В дальнейшем нельзя генерировать новый ключ или менять secrets на другой JKS. Все релизные сборки должны использовать исходный keystore.
+В дальнейшем все релизные сборки MOEX Trading Lab должны использовать исходный JKS и тот же сертификат. Не генерируйте новый ключ и не заменяйте секреты другим файлом.
