@@ -35,6 +35,9 @@ jobs:
       - name: Run unit tests
         run: gradle testDebugUnitTest
 
+      - name: Compile Android instrumentation tests
+        run: gradle compileDebugAndroidTestKotlin
+
       - name: Assemble debug APK
         run: gradle assembleDebug
 
