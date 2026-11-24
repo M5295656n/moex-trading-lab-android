@@ -31,10 +31,10 @@ jobs:
             unzip -l "$archive" >&2
             exit 1
           fi
-          openssl x509 -inform DER -in "$certificate" -noout -subject -issuer -ext basicConstraints
-          openssl x509 -inform DER -in "$certificate" -noout -subject | grep -qi "Russian Trusted Root CA"
-          openssl x509 -inform DER -in "$certificate" -noout -ext basicConstraints | grep -q "CA:TRUE"
-          openssl x509 -inform DER -in "$certificate" -out "$RUNNER_TEMP/russian_trusted_root_ca.crt"
+          openssl x509 -in "$certificate" -noout -subject -issuer -ext basicConstraints
+          openssl x509 -in "$certificate" -noout -subject | grep -qi "Russian Trusted Root CA"
+          openssl x509 -in "$certificate" -noout -ext basicConstraints | grep -q "CA:TRUE"
+          openssl x509 -in "$certificate" -out "$RUNNER_TEMP/russian_trusted_root_ca.crt"
           sudo install -m 0644 "$RUNNER_TEMP/russian_trusted_root_ca.crt" /usr/local/share/ca-certificates/russian_trusted_root_ca.crt
           sudo update-ca-certificates
 
