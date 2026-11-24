@@ -21,8 +21,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import ru.moex.tradinglab.data.local.HistoryCoverageEntity
 import ru.moex.tradinglab.data.local.MarketDataDao
 import ru.moex.tradinglab.data.local.MarketInstrumentEntity
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun ChartScreen(
@@ -126,16 +130,16 @@ fun ChartScreen(
                                 }
                             }
                         }
-                        val latestCoverage = coverage.firstOrNull()
-                        Text(
-                            if (latestCoverage == null) {
-                                "Статус истории: нет записи о загрузке"
-                            } else {
-                                "Источник: ${latestCoverage.source} · получено: ${latestCoverage.fetchedAtEpochMillis}"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        HistoryCoverageDetails(
+                            coverage = coverage.firstOrNull(),
+                            storedCandleCount = candles.size
                         )
+                        OutlinedButton(
+                            onClick = onOpenDiagnostics,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Загрузка и диагностика данных")
+                        }
                         CandleChart(
                             instrumentId = instrument.instrumentId,
                             intervalMinutes = interval,
@@ -164,3 +168,69 @@ fun ChartScreen(
         }
     }
 }
+
+@Composable
+private fun HistoryCoverageDetails(
+    coverage: HistoryCoverageEntity?,
+    storedCandleCount: Int
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text("Состояние истории", style = MaterialTheme.typography.titleSmall)
+        Text("Свечей сохранено в Room: $storedCandleCount", style = MaterialTheme.typography.bodySmall)
+        if (coverage == null) {
+            Text(
+                "Загрузка для этого таймфрейма ещё не зафиксирована.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            return
+        }
+
+        Text("Источник: ${coverage.source}", style = MaterialTheme.typography.bodySmall)
+        Text(
+            "Диапазон: ${coverage.firstCandleBegin ?: "нет данных"} — ${coverage.lastCandleBegin ?: "нет данных"}",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Text(
+            "Пагинация: ${chartPaginationLabel(coverage.paginationStatus)}",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Text(
+            "Страниц: ${coverage.pageCount} · размер страницы: ${coverage.pageSize}",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Text("Пропущено некорректных строк: ${coverage.skippedRows}", style = MaterialTheme.typography.bodySmall)
+        Text(
+            "Пропуски свечей: ${coverage.gapCount?.toString() ?: "не оценивались — нет проверенного расписания"}",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Text(
+            "Актуальность: ${chartFreshnessLabel(coverage.freshnessStatus)}",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Text(
+            "Получено: ${formatChartTimestamp(coverage.fetchedAtEpochMillis)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+internal fun chartPaginationLabel(value: String): String = when (value) {
+    "COMPLETE" -> "получена завершающая страница"
+    "PAGE_LIMIT_REACHED" -> "достигнут лимит страниц — история может быть неполной"
+    "PAGINATION_STALLED" -> "пагинация остановилась"
+    else -> value
+}
+
+internal fun chartFreshnessLabel(value: String): String = when (value) {
+    "FRESH" -> "актуальные"
+    "STALE" -> "устаревшие"
+    "MARKET_CLOSED" -> "рынок закрыт"
+    "WAITING_FOR_CANDLE_CLOSE" -> "ожидание закрытия свечи"
+    "UNKNOWN" -> "неизвестна"
+    else -> value
+}
+
+private fun formatChartTimestamp(epochMillis: Long): String =
+    SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date(epochMillis))
