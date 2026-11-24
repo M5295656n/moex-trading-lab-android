@@ -85,15 +85,17 @@ fun ChartScreen(
             }
         }
 
-        items(matching, key = { it.instrumentId }) { instrument ->
-            OutlinedButton(
-                onClick = { selected = instrument },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    "${instrument.secId} · ${instrument.shortName ?: instrument.name} · ${instrument.boardId ?: instrument.market}",
-                    maxLines = 1
-                )
+        if (selected == null) {
+            items(matching, key = { it.instrumentId }) { instrument ->
+                OutlinedButton(
+                    onClick = { selected = instrument },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "${instrument.secId} · ${instrument.shortName ?: instrument.name} · ${instrument.boardId ?: instrument.market}",
+                        maxLines = 1
+                    )
+                }
             }
         }
 
@@ -113,6 +115,9 @@ fun ChartScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        OutlinedButton(onClick = { selected = null }) {
+                            Text("Выбрать другой инструмент")
+                        }
                         Text("Таймфрейм", style = MaterialTheme.typography.labelLarge)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf(1, 10, 60, 24).forEach { value ->
