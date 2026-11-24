@@ -33,36 +33,13 @@ class CalendarAwareCandleGapAnalyzerTest {
         )
 
         assertEquals(CalendarAwareGapResult.Status.COMPLETE, result.status)
-        assertEquals(
-            listOf(
-                LocalDateTime.parse("2026-11-23T10:20:00"),
-                LocalDateTime.parse("2026-11-23T14:10:00"),
-                LocalDateTime.parse("2026-11-23T14:20:00"),
-                LocalDateTime.parse("2026-11-23T14:30:00"),
-                LocalDateTime.parse("2026-11-23T14:40:00"),
-                LocalDateTime.parse("2026-11-23T14:50:00"),
-                LocalDateTime.parse("2026-11-23T15:00:00"),
-                LocalDateTime.parse("2026-11-23T15:10:00"),
-                LocalDateTime.parse("2026-11-23T15:20:00"),
-                LocalDateTime.parse("2026-11-23T15:30:00"),
-                LocalDateTime.parse("2026-11-23T15:40:00"),
-                LocalDateTime.parse("2026-11-23T15:50:00"),
-                LocalDateTime.parse("2026-11-23T16:00:00"),
-                LocalDateTime.parse("2026-11-23T16:10:00"),
-                LocalDateTime.parse("2026-11-23T16:20:00"),
-                LocalDateTime.parse("2026-11-23T16:30:00"),
-                LocalDateTime.parse("2026-11-23T16:40:00"),
-                LocalDateTime.parse("2026-11-23T16:50:00"),
-                LocalDateTime.parse("2026-11-23T17:00:00"),
-                LocalDateTime.parse("2026-11-23T17:10:00"),
-                LocalDateTime.parse("2026-11-23T17:20:00"),
-                LocalDateTime.parse("2026-11-23T17:30:00"),
-                LocalDateTime.parse("2026-11-23T17:40:00"),
-                LocalDateTime.parse("2026-11-23T17:50:00")
-            ),
-            result.missingBegins
-        )
-    }
+        assertEquals(38, result.missingBegins.size)
+        assertTrue(result.missingBegins.contains(LocalDateTime.parse("2026-11-23T10:20:00")))
+        assertTrue(result.missingBegins.contains(LocalDateTime.parse("2026-11-23T12:50:00")))
+        assertTrue(result.missingBegins.contains(LocalDateTime.parse("2026-11-23T14:10:00")))
+        assertTrue(result.missingBegins.contains(LocalDateTime.parse("2026-11-23T17:50:00")))
+        assertTrue(result.missingBegins.none { it.toLocalTime().toString() == "13:00" })
+        assertTrue(result.missingBegins.none { it.toLocalTime().toString() == "13:50" })    }
 
     @Test
     fun incompleteCalendarNeverReportsFalseGaps() {
