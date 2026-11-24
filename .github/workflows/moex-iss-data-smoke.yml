@@ -25,9 +25,9 @@ jobs:
             --output "$archive"
           mkdir -p "$extract_dir"
           unzip -q "$archive" -d "$extract_dir"
-          certificate="$(find "$extract_dir" -type f -iname 'Russian Trusted Root CA.cer' -print -quit)"
+          certificate="$(find "$extract_dir" -type f -iname 'Russian_Trusted_Root_CA.cer' -print -quit)"
           if [ -z "$certificate" ]; then
-            echo "Official NCA archive does not contain Russian Trusted Root CA.cer" >&2
+            echo "Official NCA archive does not contain Russian_Trusted_Root_CA.cer" >&2
             unzip -l "$archive" >&2
             exit 1
           fi
