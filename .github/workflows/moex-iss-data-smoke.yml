@@ -37,9 +37,6 @@ jobs:
           openssl x509 -in "$certificate" -out "$RUNNER_TEMP/russian_trusted_root_ca.crt"
           sudo install -m 0644 "$RUNNER_TEMP/russian_trusted_root_ca.crt" /usr/local/share/ca-certificates/russian_trusted_root_ca.crt
           sudo update-ca-certificates
-          echo "NCA_ROOT_CERT_PEM_BEGIN"
-          openssl x509 -in "$certificate" -out -
-          echo "NCA_ROOT_CERT_PEM_END"
 
       - name: Check catalog endpoints
         shell: bash
