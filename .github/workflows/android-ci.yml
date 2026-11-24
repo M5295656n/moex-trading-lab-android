@@ -75,13 +75,13 @@ jobs:
           test -s "$APK"
           BUILD_TOOLS="$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
           "$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner" verify --verbose "$APK"
-          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/aapt" dump badging "$APK" | grep -E "package: name='ru.moex.tradinglab'.*versionCode='2'.*versionName='1.0.1'"
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/aapt" dump badging "$APK" | grep -E "package: name='ru.moex.tradinglab'.*versionCode='1'.*versionName='1.0.0'"
 
       - name: Upload signed release APK
         if: ${{ env.MOEX_RELEASE_KEYSTORE_BASE64 != '' && env.MOEX_RELEASE_STORE_PASSWORD != '' && env.MOEX_RELEASE_KEY_ALIAS != '' && env.MOEX_RELEASE_KEY_PASSWORD != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: moex-trading-lab-release-v1.0.1
+          name: moex-trading-lab-release-v1.0.0
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
