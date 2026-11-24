@@ -8,22 +8,33 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.launch
 import ru.moex.tradinglab.data.local.HistoryCoverageEntity
 import ru.moex.tradinglab.data.local.MarketDataDao
 import ru.moex.tradinglab.data.local.MarketInstrumentEntity
+import ru.moex.tradinglab.data.remote.IssInstrument
+import ru.moex.tradinglab.data.remote.MoexMarket
+import ru.moex.tradinglab.data.sync.MoexMarketDataSync
+import java.lang.reflect.Type
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -31,12 +42,16 @@ import java.util.Locale
 @Composable
 fun ChartScreen(
     dao: MarketDataDao,
+    sync: MoexMarketDataSync,
     onOpenDiagnostics: () -> Unit
 ) {
     val instruments by dao.observeInstruments().collectAsState(initial = emptyList())
     var search by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf<MarketInstrumentEntity?>(null) }
     var interval by remember { mutableStateOf(24) }
+    var isLoadingHistory by remember { mutableStateOf(false) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     val candlesFlow = remember(selected?.instrumentId, interval) {
         dao.observeCandles(selected?.instrumentId.orEmpty(), interval)
@@ -46,6 +61,31 @@ fun ChartScreen(
         dao.observeCoverage(selected?.instrumentId.orEmpty(), interval)
     }
     val coverage by coverageFlow.collectAsState(initial = emptyList())
+
+    fun loadHistory(instrument: MarketInstrumentEntity, force: Boolean = false) {
+        if (isLoadingHistory || (!force && candles.isNotEmpty())) return
+        scope.launch {
+            isLoadingHistory = true
+            loadError = null
+            try {
+                sync.syncInstrumentHistoryIncrementally(
+                    instrument = instrument.toIssInstrument(),
+                    intervalMinutes = interval
+                )
+            } catch (error: Exception) {
+                loadError = error.message ?: error.javaClass.simpleName
+            } finally {
+                isLoadingHistory = false
+            }
+        }
+    }
+
+    LaunchedEffect(selected?.instrumentId, interval) {
+        val instrument = selected
+        if (instrument != null && candles.isEmpty()) {
+            loadHistory(instrument)
+        }
+    }
 
     val matching = remember(instruments, search) {
         val query = search.trim()
@@ -92,7 +132,10 @@ fun ChartScreen(
         if (selected == null) {
             items(matching, key = { it.instrumentId }) { instrument ->
                 OutlinedButton(
-                    onClick = { selected = instrument },
+                    onClick = {
+                        selected = instrument
+                        loadError = null
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -119,16 +162,53 @@ fun ChartScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        OutlinedButton(onClick = { selected = null }) {
+                        OutlinedButton(onClick = {
+                            selected = null
+                            loadError = null
+                        }) {
                             Text("Выбрать другой инструмент")
                         }
                         Text("Таймфрейм", style = MaterialTheme.typography.labelLarge)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf(1, 10, 60, 24).forEach { value ->
-                                OutlinedButton(onClick = { interval = value }) {
+                                OutlinedButton(
+                                    onClick = {
+                                        interval = value
+                                        loadError = null
+                                    },
+                                    enabled = !isLoadingHistory
+                                ) {
                                     Text(if (value == 24) "1д" else "${value}м")
                                 }
                             }
+                        }
+                        if (isLoadingHistory) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                CircularProgressIndicator()
+                                Text("Загружаем свечи из MOEX ISS…")
+                            }
+                        } else if (candles.isEmpty()) {
+                            Text(
+                                "Для выбранного таймфрейма история пока не сохранена. Выполняется загрузка.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Button(
+                                onClick = { loadHistory(instrument, force = true) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Повторить загрузку истории") }
+                        } else {
+                            OutlinedButton(
+                                onClick = { loadHistory(instrument, force = true) },
+                                enabled = !isLoadingHistory,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Обновить историю") }
+                        }
+                        loadError?.let {
+                            Text(
+                                "Не удалось загрузить свечи: $it",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
                         HistoryCoverageDetails(
                             coverage = coverage.firstOrNull(),
@@ -156,7 +236,7 @@ fun ChartScreen(
                     ) {
                         Text("Выберите инструмент", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "График строится только по фактически загруженным свечам. Если истории нет, откройте диагностику и загрузите её.",
+                            "После выбора приложение автоматически запросит историю свечей MOEX для выбранного таймфрейма.",
                             style = MaterialTheme.typography.bodySmall
                         )
                         OutlinedButton(onClick = onOpenDiagnostics) {
@@ -167,6 +247,25 @@ fun ChartScreen(
             }
         }
     }
+}
+
+private fun MarketInstrumentEntity.toIssInstrument(): IssInstrument {
+    val fieldsType: Type = object : TypeToken<Map<String, String?>>() {}.type
+    val fields = rawFieldsJson?.let {
+        runCatching { Gson().fromJson<Map<String, String?>>(it, fieldsType) }.getOrNull()
+    }.orEmpty()
+    return IssInstrument(
+        secId = secId,
+        name = name,
+        shortName = shortName,
+        isin = isin,
+        boardId = boardId,
+        lotSize = lotSize,
+        currency = currency,
+        market = MoexMarket.valueOf(market),
+        source = source,
+        rawFields = fields
+    )
 }
 
 @Composable
