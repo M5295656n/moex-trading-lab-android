@@ -74,9 +74,19 @@ fun CandleChart(
     }
     var showSma by remember(instrumentId, intervalMinutes) { mutableStateOf(false) }
     var showEma by remember(instrumentId, intervalMinutes) { mutableStateOf(false) }
+    var showBollinger by remember(instrumentId, intervalMinutes) { mutableStateOf(false) }
+    var showRsi by remember(instrumentId, intervalMinutes) { mutableStateOf(false) }
+    var showMacd by remember(instrumentId, intervalMinutes) { mutableStateOf(false) }
+    var showAtr by remember(instrumentId, intervalMinutes) { mutableStateOf(false) }
     val closes = remember(candles) { candles.map { candle -> candle.close.takeIf { candle.hasValidOhlc() } } }
+    val highs = remember(candles) { candles.map { candle -> candle.high.takeIf { candle.hasValidOhlc() } } }
+    val lows = remember(candles) { candles.map { candle -> candle.low.takeIf { candle.hasValidOhlc() } } }
     val smaValues = remember(closes) { CandleIndicators.sma(closes, 20) }
     val emaValues = remember(closes) { CandleIndicators.ema(closes, 20) }
+    val bollinger = remember(closes) { CandleIndicators.bollingerBands(closes, 20, 2.0) }
+    val rsiValues = remember(closes) { CandleIndicators.rsi(closes, 14) }
+    val macdValues = remember(closes) { CandleIndicators.macd(closes) }
+    val atrValues = remember(highs, lows, closes) { CandleIndicators.atr(highs, lows, closes, 14) }
     val initialZoom = (chartable.size / 120f).coerceAtLeast(1f)
     var zoom by remember(instrumentId, intervalMinutes, chartable.size) { mutableFloatStateOf(initialZoom) }
     var panFraction by remember(instrumentId, intervalMinutes, chartable.size) { mutableFloatStateOf(1f) }
@@ -85,8 +95,14 @@ fun CandleChart(
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            OutlinedButton(onClick = { showSma = !showSma }) { Text(if (showSma) "SMA 20 ON" else "SMA 20") }
-            OutlinedButton(onClick = { showEma = !showEma }) { Text(if (showEma) "EMA 20 ON" else "EMA 20") }
+            OutlinedButton(onClick = { showSma = !showSma }) { Text(if (showSma) "SMA 20 ✓" else "SMA 20") }
+            OutlinedButton(onClick = { showEma = !showEma }) { Text(if (showEma) "EMA 20 ✓" else "EMA 20") }
+            OutlinedButton(onClick = { showBollinger = !showBollinger }) { Text(if (showBollinger) "BB ✓" else "BB") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedButton(onClick = { showRsi = !showRsi }) { Text(if (showRsi) "RSI ✓" else "RSI") }
+            OutlinedButton(onClick = { showMacd = !showMacd }) { Text(if (showMacd) "MACD ✓" else "MACD") }
+            OutlinedButton(onClick = { showAtr = !showAtr }) { Text(if (showAtr) "ATR ✓" else "ATR") }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -169,10 +185,13 @@ fun CandleChart(
 
                 val visibleSmaSeries = if (showSma) visibleSourceIndices.map { smaValues[it] } else emptyList()
                 val visibleEmaSeries = if (showEma) visibleSourceIndices.map { emaValues[it] } else emptyList()
-                val visibleSma = visibleSmaSeries.filterNotNull()
-                val visibleEma = visibleEmaSeries.filterNotNull()
-                val minPrice = min(visible.minOf { it.low!! }, (visibleSma + visibleEma).minOrNull() ?: Double.POSITIVE_INFINITY)
-                val maxPrice = max(visible.maxOf { it.high!! }, (visibleSma + visibleEma).maxOrNull() ?: Double.NEGATIVE_INFINITY)
+                val visibleBbUpper = if (showBollinger) visibleSourceIndices.map { bollinger.upper[it] } else emptyList()
+                val visibleBbMiddle = if (showBollinger) visibleSourceIndices.map { bollinger.middle[it] } else emptyList()
+                val visibleBbLower = if (showBollinger) visibleSourceIndices.map { bollinger.lower[it] } else emptyList()
+                val visibleOverlayValues = visibleSmaSeries + visibleEmaSeries + visibleBbUpper + visibleBbMiddle + visibleBbLower
+                val overlayFinite = visibleOverlayValues.filterNotNull().filter { it.isFinite() }
+                val minPrice = min(visible.minOf { it.low!! }, overlayFinite.minOrNull() ?: Double.POSITIVE_INFINITY)
+                val maxPrice = max(visible.maxOf { it.high!! }, overlayFinite.maxOrNull() ?: Double.NEGATIVE_INFINITY)
                 val priceRange = (maxPrice - minPrice).takeIf { it > 0.0 }
                     ?: max(kotlin.math.abs(maxPrice) * 0.002, 0.01)
                 val gridColor = Color(0xFF52606B)
@@ -275,6 +294,11 @@ fun CandleChart(
                 }
                 if (showSma) drawIndicator(visibleSmaSeries, Color(0xFFFFB74D))
                 if (showEma) drawIndicator(visibleEmaSeries, Color(0xFF64B5F6))
+                if (showBollinger) {
+                    drawIndicator(visibleBbUpper, Color(0xFFAB87D5))
+                    drawIndicator(visibleBbMiddle, Color(0xFFCEB6EA))
+                    drawIndicator(visibleBbLower, Color(0xFFAB87D5))
+                }
 
                 drawLine(
                     color = gridColor,
@@ -308,11 +332,177 @@ fun CandleChart(
                     )
                 }
             }
+            val visibleRsi = visibleSourceIndices.map { rsiValues[it] }
+            val visibleMacdLine = visibleSourceIndices.map { macdValues.line[it] }
+            val visibleMacdSignal = visibleSourceIndices.map { macdValues.signal[it] }
+            val visibleMacdHistogram = visibleSourceIndices.map { macdValues.histogram[it] }
+            val visibleAtr = visibleSourceIndices.map { atrValues[it] }
+
+            if (showRsi) {
+                IndicatorPanel(
+                    title = "RSI 14",
+                    values = listOf(visibleRsi),
+                    colors = listOf(Color(0xFF42A5F5)),
+                    visibleCount = visible.size,
+                    fixedRange = 0.0 to 100.0,
+                    guideValues = listOf(30.0, 70.0)
+                )
+            }
+            if (showMacd) {
+                IndicatorPanel(
+                    title = "MACD 12 / 26 / 9",
+                    values = listOf(visibleMacdHistogram, visibleMacdLine, visibleMacdSignal),
+                    colors = listOf(Color(0xFF78909C), Color(0xFF26A69A), Color(0xFFFFB74D)),
+                    visibleCount = visible.size,
+                    zeroLine = true,
+                    histogramSeries = 0
+                )
+            }
+            if (showAtr) {
+                IndicatorPanel(
+                    title = "ATR 14",
+                    values = listOf(visibleAtr),
+                    colors = listOf(Color(0xFFAB87D5)),
+                    visibleCount = visible.size,
+                    includeZero = true
+                )
+            }
+
             Text(
                 text = "Масштабирование двумя пальцами · перемещение графика жестом. Данные отображаются из локальной базы Room.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+
+@Composable
+private fun IndicatorPanel(
+    title: String,
+    values: List<List<Double?>>,
+    colors: List<Color>,
+    visibleCount: Int,
+    fixedRange: Pair<Double, Double>? = null,
+    guideValues: List<Double> = emptyList(),
+    zeroLine: Boolean = false,
+    includeZero: Boolean = false,
+    histogramSeries: Int? = null
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            title,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(92.dp)
+        ) {
+            val left = 62.dp.toPx()
+            val right = size.width - 10.dp.toPx()
+            val top = 6.dp.toPx()
+            val bottom = size.height - 6.dp.toPx()
+            val width = (right - left).coerceAtLeast(1f)
+            val height = (bottom - top).coerceAtLeast(1f)
+            val finite = values.flatten().filterNotNull().filter { it.isFinite() }
+            if (finite.isEmpty() || visibleCount <= 0) {
+                val paint = NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.Gray.toArgb()
+                    textSize = 10.dp.toPx()
+                }
+                drawContext.canvas.nativeCanvas.drawText(
+                    "Недостаточно истории для расчёта",
+                    left,
+                    top + 18.dp.toPx(),
+                    paint
+                )
+                return@Canvas
+            }
+
+            var minValue = fixedRange?.first ?: finite.minOrNull()!!
+            var maxValue = fixedRange?.second ?: finite.maxOrNull()!!
+            if (includeZero) minValue = min(minValue, 0.0)
+            if (includeZero) maxValue = max(maxValue, 0.0)
+            if (zeroLine) {
+                minValue = min(minValue, 0.0)
+                maxValue = max(maxValue, 0.0)
+            }
+            if (maxValue <= minValue) {
+                val padding = max(kotlin.math.abs(maxValue) * 0.05, 0.01)
+                minValue -= padding
+                maxValue += padding
+            }
+            val range = maxValue - minValue
+            val grid = Color(0xFF52606B)
+            val axis = Color(0xFFB0BEC5)
+            val textPaint = NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply {
+                color = axis.toArgb()
+                textSize = 9.dp.toPx()
+            }
+            val yFor = { value: Double ->
+                bottom - ((value - minValue) / range).toFloat() * height
+            }
+            val guides = (guideValues + if (zeroLine) listOf(0.0) else emptyList()).distinct()
+            guides.forEach { value ->
+                if (value in minValue..maxValue) {
+                    val y = yFor(value)
+                    drawLine(
+                        color = grid.copy(alpha = 0.8f),
+                        start = Offset(left, y),
+                        end = Offset(right, y),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                    drawContext.canvas.nativeCanvas.drawText(
+                        DecimalFormat("0.##").format(value),
+                        2.dp.toPx(),
+                        y + textPaint.textSize * 0.35f,
+                        textPaint
+                    )
+                }
+            }
+
+            val slot = width / visibleCount.toFloat()
+            values.forEachIndexed { seriesIndex, series ->
+                val color = colors.getOrElse(seriesIndex) { axis }
+                if (seriesIndex == histogramSeries) {
+                    series.forEachIndexed { index, raw ->
+                        val value = raw?.takeIf { it.isFinite() } ?: return@forEachIndexed
+                        val x = left + slot * (index + 0.5f)
+                        val zeroY = yFor(0.0.coerceIn(minValue, maxValue))
+                        val valueY = yFor(value.coerceIn(minValue, maxValue))
+                        drawRect(
+                            color = color.copy(alpha = 0.8f),
+                            topLeft = Offset(x - max(slot * 0.28f, 1.dp.toPx()), min(zeroY, valueY)),
+                            size = Size(
+                                max(slot * 0.56f, 1.dp.toPx()),
+                                max(kotlin.math.abs(valueY - zeroY), 1.dp.toPx())
+                            )
+                        )
+                    }
+                } else {
+                    val path = Path()
+                    var started = false
+                    series.forEachIndexed { index, raw ->
+                        val value = raw?.takeIf { it.isFinite() }
+                        if (value == null) {
+                            started = false
+                        } else {
+                            val x = left + slot * (index + 0.5f)
+                            val y = yFor(value.coerceIn(minValue, maxValue))
+                            if (started) path.lineTo(x, y) else path.moveTo(x, y)
+                            started = true
+                        }
+                    }
+                    drawPath(
+                        path,
+                        color = color,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.8.dp.toPx())
+                    )
+                }
+            }
         }
     }
 }
