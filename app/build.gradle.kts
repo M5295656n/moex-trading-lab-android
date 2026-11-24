@@ -5,6 +5,16 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val moexStoreFile = providers.environmentVariable("MOEX_SIGNING_KEYSTORE_FILE").orNull
+val moexStorePassword = providers.environmentVariable("MOEX_SIGNING_STORE_PASSWORD").orNull
+val moexKeyAlias = providers.environmentVariable("MOEX_SIGNING_KEY_ALIAS").orNull
+val moexKeyPassword = providers.environmentVariable("MOEX_SIGNING_KEY_PASSWORD").orNull
+
+val hasMoexSigning = !moexStoreFile.isNullOrBlank() &&
+    !moexStorePassword.isNullOrBlank() &&
+    !moexKeyAlias.isNullOrBlank() &&
+    !moexKeyPassword.isNullOrBlank()
+
 android {
     namespace = "ru.moex.tradinglab"
     compileSdk = 36
@@ -17,6 +27,31 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (hasMoexSigning) {
+            create("moex") {
+                storeFile = file(moexStoreFile!!)
+                storePassword = moexStorePassword
+                keyAlias = moexKeyAlias
+                keyPassword = moexKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            if (hasMoexSigning) {
+                signingConfig = signingConfigs.getByName("moex")
+            }
+        }
+        getByName("release") {
+            if (hasMoexSigning) {
+                signingConfig = signingConfigs.getByName("moex")
+            }
+            isMinifyEnabled = false
+        }
     }
 
     buildFeatures {
