@@ -39,7 +39,8 @@ class CalendarAwareCandleGapAnalyzerTest {
         assertTrue(result.missingBegins.contains(LocalDateTime.parse("2026-11-23T14:10:00")))
         assertTrue(result.missingBegins.contains(LocalDateTime.parse("2026-11-23T17:50:00")))
         assertTrue(result.missingBegins.none { it.toLocalTime().toString() == "13:00" })
-        assertTrue(result.missingBegins.none { it.toLocalTime().toString() == "13:50" })    }
+        assertTrue(result.missingBegins.none { it.toLocalTime().toString() == "13:50" })
+    }
 
     @Test
     fun incompleteCalendarNeverReportsFalseGaps() {
