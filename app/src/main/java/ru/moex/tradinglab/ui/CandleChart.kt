@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -21,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
@@ -77,6 +79,11 @@ fun CandleChart(
                 high >= max(open, close) && low <= min(open, close)
         }
     }
+    var showSma by remember(instrumentId, intervalMinutes) { mutableStateOf(false) }
+    var showEma by remember(instrumentId, intervalMinutes) { mutableStateOf(false) }
+    val closes = remember(chartable) { chartable.map { it.close } }
+    val smaValues = remember(closes) { CandleIndicators.sma(closes, 20) }
+    val emaValues = remember(closes) { CandleIndicators.ema(closes, 20) }
     val initialZoom = (chartable.size / 120f).coerceAtLeast(1f)
     var zoom by remember(instrumentId, intervalMinutes, chartable.size) { mutableFloatStateOf(initialZoom) }
     var panFraction by remember(instrumentId, intervalMinutes, chartable.size) { mutableFloatStateOf(1f) }
