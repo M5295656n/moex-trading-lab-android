@@ -74,7 +74,7 @@ fun CandleChart(
             val close = candle.close
             open != null && high != null && low != null && close != null &&
                 open.isFinite() && high.isFinite() && low.isFinite() && close.isFinite() &&
-                high >= low
+                high >= max(open, close) && low <= min(open, close)
         }
     }
     val initialZoom = (chartable.size / 120f).coerceAtLeast(1f)
