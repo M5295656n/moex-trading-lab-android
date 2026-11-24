@@ -79,7 +79,7 @@ data class IssHistoryResult(
  * It never substitutes missing market values with zero.
  */
 class MoexIssDataRepository(
-    private val client: MoexIssClient
+    private val client: MoexIssTableClient
 ) {
     suspend fun loadCatalog(
         market: MoexMarket,
@@ -90,7 +90,6 @@ class MoexIssDataRepository(
         require(pageSize in 1..MAX_PAGE_SIZE) { "pageSize must be between 1 and $MAX_PAGE_SIZE" }
         require(maxPages > 0) { "maxPages must be positive" }
 
-        // Keep distinct boards: canonical identity includes market + board + SECID.
         val instrumentsById = LinkedHashMap<String, IssInstrument>()
         val starts = mutableListOf<Int>()
         var skippedRows = 0
@@ -147,7 +146,9 @@ class MoexIssDataRepository(
     /**
      * Loads pages from start=0 until ISS returns a short/empty page, or until
      * maxPages is reached. A page with no new candle timestamps is reported
-     * as stalled rather than silently marked complete.
+     * as stalled rather than silently marked complete. Repeated timestamps
+     * replace earlier row values, while the unique timestamp count drives
+     * the pagination-stall guard.
      */
     suspend fun loadCandles(
         endpoint: String,
@@ -169,7 +170,10 @@ class MoexIssDataRepository(
         while (pages < maxPages) {
             val start = pages * pageSize
             starts += start
-            val table = client.getTable(endpoint, query + mapOf("start" to start.toString(), "limit" to pageSize.toString()))
+            val table = client.getTable(
+                endpoint,
+                query + mapOf("start" to start.toString(), "limit" to pageSize.toString())
+            )
             fetchedAt = table.fetchedAtEpochMillis
             pages++
 
@@ -178,8 +182,9 @@ class MoexIssDataRepository(
                 val candle = IssRowMapper.candle(row)
                 if (candle == null) {
                     skippedRows++
-                } else if (candlesByBegin.putIfAbsent(candle.begin, candle) == null) {
-                    addedOnPage++
+                } else {
+                    val previous = candlesByBegin.put(candle.begin, candle)
+                    if (previous == null) addedOnPage++
                 }
             }
 

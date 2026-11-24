@@ -16,22 +16,32 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.launch
 import ru.moex.tradinglab.data.local.CatalogSyncEntity
+import ru.moex.tradinglab.data.local.HistoryCoverageEntity
 import ru.moex.tradinglab.data.local.MarketDataDao
+import ru.moex.tradinglab.data.local.MarketInstrumentEntity
+import ru.moex.tradinglab.data.remote.HistoryCompleteness
+import ru.moex.tradinglab.data.remote.IssInstrument
 import ru.moex.tradinglab.data.remote.MoexMarket
 import ru.moex.tradinglab.data.sync.MoexMarketDataSync
+import java.lang.reflect.Type
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -92,9 +102,7 @@ fun MarketDataDiagnosticsScreen(
                     modifier = Modifier.padding(top = 8.dp)
                 )
                 OutlinedButton(
-                    onClick = {
-                        loadAllCatalogs()
-                    },
+                    onClick = { loadAllCatalogs() },
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
                 ) {
                     Text("Обновить все каталоги")
@@ -112,6 +120,10 @@ fun MarketDataDiagnosticsScreen(
                     message = messages[market.name],
                     onLoad = { loadCatalog(market) }
                 )
+            }
+
+            item(key = "history-loader") {
+                HistoryLoadingSection(instruments = instruments, dao = dao, sync = sync)
             }
 
             item {
@@ -139,6 +151,203 @@ fun MarketDataDiagnosticsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun HistoryLoadingSection(
+    instruments: List<MarketInstrumentEntity>,
+    dao: MarketDataDao,
+    sync: MoexMarketDataSync
+) {
+    var search by remember { mutableStateOf("") }
+    var selected by remember { mutableStateOf<MarketInstrumentEntity?>(null) }
+    var interval by remember { mutableStateOf(24) }
+    var fromDate by remember { mutableStateOf("2000-01-01") }
+    var isLoading by remember { mutableStateOf(false) }
+    var resultMessage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val coverageFlow = remember(selected?.instrumentId, interval) {
+        dao.observeCoverage(selected?.instrumentId.orEmpty(), interval)
+    }
+    val coverage by coverageFlow.collectAsState(initial = emptyList())
+    val matching = remember(instruments, search) {
+        val query = search.trim()
+        if (query.isEmpty()) instruments.take(6) else instruments.filter {
+            it.secId.contains(query, ignoreCase = true) ||
+                it.name.contains(query, ignoreCase = true) ||
+                it.shortName.orEmpty().contains(query, ignoreCase = true)
+        }.take(8)
+    }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("История свечей", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Выберите инструмент из локального каталога MOEX, затем таймфрейм и начальную дату.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            OutlinedTextField(
+                value = search,
+                onValueChange = { search = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Поиск инструмента") },
+                placeholder = { Text("Например, SBER или IMOEX") }
+            )
+            if (matching.isEmpty()) {
+                Text(
+                    if (instruments.isEmpty()) "Сначала загрузите каталог рынка." else "Инструменты не найдены.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text("Найденные инструменты", style = MaterialTheme.typography.labelLarge)
+                matching.forEach { item ->
+                    OutlinedButton(
+                        onClick = {
+                            selected = item
+                            resultMessage = null
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "${item.secId} · ${item.shortName ?: item.name} · ${item.boardId ?: item.market}",
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+            selected?.let { item ->
+                Text(
+                    "Выбран: ${item.secId} · ${item.name} · ${item.market}/${item.boardId ?: "—"}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            Text("Таймфрейм", style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(1, 10, 60, 24).forEach { value ->
+                    OutlinedButton(
+                        onClick = { interval = value },
+                        enabled = !isLoading
+                    ) {
+                        Text(if (value == 24) "1д" else "${value}м")
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = fromDate,
+                onValueChange = { fromDate = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Начало истории") },
+                supportingText = { Text("Формат YYYY-MM-DD. По умолчанию — 2000-01-01.") }
+            )
+            Button(
+                onClick = {
+                    val instrument = selected ?: return@Button
+                    if (fromDate.isNotBlank() && !fromDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
+                        resultMessage = "Проверьте дату: нужен формат YYYY-MM-DD."
+                        return@Button
+                    }
+                    scope.launch {
+                        isLoading = true
+                        resultMessage = null
+                        try {
+                            val result = sync.syncInstrumentHistoryIncrementally(
+                                instrument = instrument.toIssInstrument(),
+                                intervalMinutes = interval,
+                                initialFrom = fromDate.trim().ifBlank { null }
+                            )
+                            resultMessage = "Получено свечей: ${result.candles.size}; страниц: ${result.pageCount}; пропущено строк: ${result.skippedRows}; статус: ${historyCompletenessLabel(result.completeness)}. Диапазон: ${result.firstBegin ?: "нет данных"} — ${result.lastBegin ?: "нет данных"}."
+                        } catch (error: Exception) {
+                            resultMessage = "Ошибка загрузки: ${error.message ?: error.javaClass.simpleName}"
+                        } finally {
+                            isLoading = false
+                        }
+                    }
+                },
+                enabled = selected != null && !isLoading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Загрузить / обновить историю")
+                }
+            }
+            Text(
+                "За один запуск — до ${MoexMarketDataSyncHistoryLimit.MAX_CANDLES_PER_RUN} свечей (200 страниц по 500). Статус «достигнут лимит» означает, что история загружена не полностью.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            resultMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+            val latest = coverage.firstOrNull()
+            if (latest != null) {
+                HistoryCoverageSummary(latest)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HistoryCoverageSummary(item: HistoryCoverageEntity) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text("Последняя сохранённая загрузка", style = MaterialTheme.typography.titleSmall)
+        Text("Источник: ${item.source}", style = MaterialTheme.typography.bodySmall)
+        Text("Страниц: ${item.pageCount} · размер страницы: ${item.pageSize}", style = MaterialTheme.typography.bodySmall)
+        Text("Пропущено строк: ${item.skippedRows}", style = MaterialTheme.typography.bodySmall)
+        Text("Пагинация: ${historyPaginationLabel(item.paginationStatus)}", style = MaterialTheme.typography.bodySmall)
+        Text("Покрытие: ${item.firstCandleBegin ?: "нет свечей"} — ${item.lastCandleBegin ?: "нет свечей"}", style = MaterialTheme.typography.bodySmall)
+        Text("Проверка пропусков: ${item.gapCount?.toString() ?: "не оценивалась"}", style = MaterialTheme.typography.bodySmall)
+        Text("Актуальность: ${item.freshnessStatus}", style = MaterialTheme.typography.bodySmall)
+        Text("Получено: ${formatTimestamp(item.fetchedAtEpochMillis)}", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+private fun MarketInstrumentEntity.toIssInstrument(): IssInstrument {
+    val fieldsType: Type = object : TypeToken<Map<String, String?>>() {}.type
+    val fields = rawFieldsJson?.let {
+        runCatching { Gson().fromJson<Map<String, String?>>(it, fieldsType) }.getOrNull()
+    }.orEmpty()
+    return IssInstrument(
+        secId = secId,
+        name = name,
+        shortName = shortName,
+        isin = isin,
+        boardId = boardId,
+        lotSize = lotSize,
+        currency = currency,
+        market = MoexMarket.valueOf(market),
+        source = source,
+        rawFields = fields
+    )
+}
+
+private fun historyCompletenessLabel(value: HistoryCompleteness): String = when (value) {
+    HistoryCompleteness.COMPLETE -> "полная пагинация"
+    HistoryCompleteness.PAGE_LIMIT_REACHED -> "достигнут лимит страниц"
+    HistoryCompleteness.PAGINATION_STALLED -> "пагинация остановилась"
+}
+
+private fun historyPaginationLabel(value: String): String = when (value) {
+    "COMPLETE" -> "полная"
+    "PAGE_LIMIT_REACHED" -> "достигнут лимит страниц"
+    "PAGINATION_STALLED" -> "остановилась"
+    else -> value
+}
+
+private object MoexIssTableLimits {
+    const val PAGE_SIZE = 500
+    const val MAX_PAGES = 200
+}
+
+private object MoexMarketDataSyncHistoryLimit {
+    const val MAX_CANDLES_PER_RUN = MoexIssTableLimits.PAGE_SIZE * MoexIssTableLimits.MAX_PAGES
 }
 
 @Composable
