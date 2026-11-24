@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -21,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
@@ -66,17 +68,15 @@ fun CandleChart(
     candles: List<CandleEntity>,
     modifier: Modifier = Modifier
 ) {
-    val chartable = remember(candles) {
-        candles.filter { candle ->
-            val open = candle.open
-            val high = candle.high
-            val low = candle.low
-            val close = candle.close
-            open != null && high != null && low != null && close != null &&
-                open.isFinite() && high.isFinite() && low.isFinite() && close.isFinite() &&
-                high >= max(open, close) && low <= min(open, close)
-        }
+    val chartable = remember(candles) { candles.filter { it.hasValidOhlc() } }
+    val chartableSourceIndices = remember(candles) {
+        candles.mapIndexedNotNull { index, candle -> index.takeIf { candle.hasValidOhlc() } }
     }
+    var showSma by remember(instrumentId, intervalMinutes) { mutableStateOf(false) }
+    var showEma by remember(instrumentId, intervalMinutes) { mutableStateOf(false) }
+    val closes = remember(candles) { candles.map { candle -> candle.close.takeIf { candle.hasValidOhlc() } } }
+    val smaValues = remember(closes) { CandleIndicators.sma(closes, 20) }
+    val emaValues = remember(closes) { CandleIndicators.ema(closes, 20) }
     val initialZoom = (chartable.size / 120f).coerceAtLeast(1f)
     var zoom by remember(instrumentId, intervalMinutes, chartable.size) { mutableFloatStateOf(initialZoom) }
     var panFraction by remember(instrumentId, intervalMinutes, chartable.size) { mutableFloatStateOf(1f) }
@@ -84,6 +84,10 @@ fun CandleChart(
     val currentPanFraction by rememberUpdatedState(panFraction)
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedButton(onClick = { showSma = !showSma }) { Text(if (showSma) "SMA 20 ON" else "SMA 20") }
+            OutlinedButton(onClick = { showEma = !showEma }) { Text(if (showEma) "EMA 20 ON" else "EMA 20") }
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
@@ -116,6 +120,7 @@ fun CandleChart(
         } else {
             val window = calculateCandleChartWindow(chartable.size, zoom, panFraction)
             val visible = chartable.subList(window.startIndex, window.endExclusive)
+            val visibleSourceIndices = chartableSourceIndices.subList(window.startIndex, window.endExclusive)
             val last = visible.last()
             Text(
                 text = "Последняя свеча: ${last.begin} · закрытие ${formatChartPrice(last.close!!)}",
@@ -162,8 +167,12 @@ fun CandleChart(
                 val plotWidth = (right - left).coerceAtLeast(1f)
                 val plotHeight = (bottom - top).coerceAtLeast(1f)
 
-                val minPrice = visible.minOf { it.low!! }
-                val maxPrice = visible.maxOf { it.high!! }
+                val visibleSmaSeries = if (showSma) visibleSourceIndices.map { smaValues[it] } else emptyList()
+                val visibleEmaSeries = if (showEma) visibleSourceIndices.map { emaValues[it] } else emptyList()
+                val visibleSma = visibleSmaSeries.filterNotNull()
+                val visibleEma = visibleEmaSeries.filterNotNull()
+                val minPrice = min(visible.minOf { it.low!! }, (visibleSma + visibleEma).minOrNull() ?: Double.POSITIVE_INFINITY)
+                val maxPrice = max(visible.maxOf { it.high!! }, (visibleSma + visibleEma).maxOrNull() ?: Double.NEGATIVE_INFINITY)
                 val priceRange = (maxPrice - minPrice).takeIf { it > 0.0 }
                     ?: max(kotlin.math.abs(maxPrice) * 0.002, 0.01)
                 val gridColor = Color(0xFF52606B)
@@ -245,6 +254,28 @@ fun CandleChart(
                     }
                 }
 
+                fun drawIndicator(values: List<Double?>, color: Color) {
+                    val path = Path()
+                    var started = false
+                    values.forEachIndexed { index, value ->
+                        if (value == null || !value.isFinite()) {
+                            started = false
+                        } else {
+                            val x = left + slotWidth * (index + 0.5f)
+                            val y = bottom - ((value - minPrice) / priceRange).toFloat() * plotHeight
+                            if (started) path.lineTo(x, y) else path.moveTo(x, y)
+                            started = true
+                        }
+                    }
+                    drawPath(
+                        path,
+                        color = color,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                    )
+                }
+                if (showSma) drawIndicator(visibleSmaSeries, Color(0xFFFFB74D))
+                if (showEma) drawIndicator(visibleEmaSeries, Color(0xFF64B5F6))
+
                 drawLine(
                     color = gridColor,
                     start = Offset(left, volumeTop),
@@ -284,6 +315,16 @@ fun CandleChart(
             )
         }
     }
+}
+
+private fun CandleEntity.hasValidOhlc(): Boolean {
+    val open = open
+    val high = high
+    val low = low
+    val close = close
+    return open != null && high != null && low != null && close != null &&
+        open.isFinite() && high.isFinite() && low.isFinite() && close.isFinite() &&
+        high >= max(open, close) && low <= min(open, close)
 }
 
 private fun formatChartPrice(value: Double): String {

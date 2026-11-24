@@ -4,9 +4,18 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.room.Room
 import ru.moex.tradinglab.data.local.MarketDataStorage
@@ -14,8 +23,14 @@ import ru.moex.tradinglab.data.local.TradingLabDatabase
 import ru.moex.tradinglab.data.remote.MoexIssClient
 import ru.moex.tradinglab.data.remote.MoexIssDataRepository
 import ru.moex.tradinglab.data.sync.MoexMarketDataSync
+import ru.moex.tradinglab.ui.ChartScreen
 import ru.moex.tradinglab.ui.MarketDataDiagnosticsScreen
 import ru.moex.tradinglab.ui.theme.MoexTradingLabTheme
+
+private enum class MainTab(val title: String) {
+    CHART("График"),
+    DATA("Данные")
+}
 
 class MainActivity : ComponentActivity() {
     private val database by lazy {
@@ -42,14 +57,56 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MoexTradingLabTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                TradingLabRoot(
+                    database = database,
+                    sync = marketDataSync
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TradingLabRoot(
+    database: TradingLabDatabase,
+    sync: MoexMarketDataSync
+) {
+    var selectedTab by rememberSaveable { mutableIntStateOf(MainTab.CHART.ordinal) }
+    val dao = database.marketDataDao()
+
+    MaterialTheme {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            bottomBar = {
+                NavigationBar {
+                    MainTab.entries.forEachIndexed { index, tab ->
+                        NavigationBarItem(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            icon = { Text(if (tab == MainTab.CHART) "▥" else "☷") },
+                            label = { Text(tab.title) }
+                        )
+                    }
+                }
+            }
+        ) { innerPadding ->
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier.fillMaxSize().padding(innerPadding)
                 ) {
-                    MarketDataDiagnosticsScreen(
-                        dao = database.marketDataDao(),
-                        sync = marketDataSync
-                    )
+                    when (MainTab.entries[selectedTab]) {
+                        MainTab.CHART -> ChartScreen(
+                            dao = dao,
+                            onOpenDiagnostics = { selectedTab = MainTab.DATA.ordinal }
+                        )
+                        MainTab.DATA -> MarketDataDiagnosticsScreen(
+                            dao = dao,
+                            sync = sync
+                        )
+                    }
                 }
             }
         }
