@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -68,6 +69,8 @@ fun CandleChart(
     var zoom by remember(instrumentId, intervalMinutes) { mutableFloatStateOf(1f) }
     var panFraction by remember(instrumentId, intervalMinutes) { mutableFloatStateOf(1f) }
 
+    val currentZoom by rememberUpdatedState(zoom)
+    val currentPanFraction by rememberUpdatedState(panFraction)
     val chartable = remember(candles) {
         candles.filter { candle ->
             val open = candle.open
@@ -134,11 +137,11 @@ fun CandleChart(
                         detectTransformGestures { _, pan, zoomChange, _ ->
                             val minimumVisible = min(chartable.size, 10)
                             val maximumZoom = (chartable.size / minimumVisible.toFloat()).coerceAtLeast(1f)
-                            val nextZoom = (zoom * zoomChange).coerceIn(1f, maximumZoom)
+                            val nextZoom = (currentZoom * zoomChange).coerceIn(1f, maximumZoom)
                             val visibleCount = calculateCandleChartWindow(
                                 chartable.size,
                                 nextZoom,
-                                panFraction
+                                currentPanFraction
                             ).count
                             val fractionDelta = if (size.width > 0 && chartable.isNotEmpty()) {
                                 pan.x / size.width.toFloat() * visibleCount / chartable.size.toFloat()
@@ -146,11 +149,10 @@ fun CandleChart(
                                 0f
                             }
                             zoom = nextZoom
-                            panFraction = (panFraction - fractionDelta).coerceIn(0f, 1f)
+                            panFraction = (currentPanFraction - fractionDelta).coerceIn(0f, 1f)
                         }
                     }
             ) {
-                val density = this.density
                 val left = 62.dp.toPx()
                 val right = size.width - 10.dp.toPx()
                 val top = 12.dp.toPx()
