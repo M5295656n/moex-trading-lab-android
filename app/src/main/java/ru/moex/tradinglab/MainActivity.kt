@@ -83,7 +83,7 @@ private fun TradingLabRoot(
                         NavigationBarItem(
                             selected = selectedTab == index,
                             onClick = { selectedTab = index },
-                            icon = {},
+                            icon = { Text(if (tab == MainTab.CHART) "▥" else "☷") },
                             label = { Text(tab.title) }
                         )
                     }
