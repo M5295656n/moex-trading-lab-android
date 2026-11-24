@@ -5,10 +5,15 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-val releaseStoreFile = providers.environmentVariable("MOEX_RELEASE_STORE_FILE").orNull
-val releaseStorePassword = providers.environmentVariable("MOEX_RELEASE_STORE_PASSWORD").orNull
-val releaseKeyAlias = providers.environmentVariable("MOEX_RELEASE_KEY_ALIAS").orNull
-val releaseKeyPassword = providers.environmentVariable("MOEX_RELEASE_KEY_PASSWORD").orNull
+val moexStoreFile = providers.environmentVariable("MOEX_SIGNING_KEYSTORE_FILE").orNull
+val moexStorePassword = providers.environmentVariable("MOEX_SIGNING_STORE_PASSWORD").orNull
+val moexKeyAlias = providers.environmentVariable("MOEX_SIGNING_KEY_ALIAS").orNull
+val moexKeyPassword = providers.environmentVariable("MOEX_SIGNING_KEY_PASSWORD").orNull
+
+val hasMoexSigning = !moexStoreFile.isNullOrBlank() &&
+    !moexStorePassword.isNullOrBlank() &&
+    !moexKeyAlias.isNullOrBlank() &&
+    !moexKeyPassword.isNullOrBlank()
 
 android {
     namespace = "ru.moex.tradinglab"
@@ -25,25 +30,25 @@ android {
     }
 
     signingConfigs {
-        if (
-            !releaseStoreFile.isNullOrBlank() &&
-            !releaseStorePassword.isNullOrBlank() &&
-            !releaseKeyAlias.isNullOrBlank() &&
-            !releaseKeyPassword.isNullOrBlank()
-        ) {
-            create("release") {
-                storeFile = file(releaseStoreFile)
-                storePassword = releaseStorePassword
-                keyAlias = releaseKeyAlias
-                keyPassword = releaseKeyPassword
+        if (hasMoexSigning) {
+            create("moex") {
+                storeFile = file(moexStoreFile!!)
+                storePassword = moexStorePassword
+                keyAlias = moexKeyAlias
+                keyPassword = moexKeyPassword
             }
         }
     }
 
     buildTypes {
+        getByName("debug") {
+            if (hasMoexSigning) {
+                signingConfig = signingConfigs.getByName("moex")
+            }
+        }
         getByName("release") {
-            if (signingConfigs.findByName("release") != null) {
-                signingConfig = signingConfigs.getByName("release")
+            if (hasMoexSigning) {
+                signingConfig = signingConfigs.getByName("moex")
             }
             isMinifyEnabled = false
         }
