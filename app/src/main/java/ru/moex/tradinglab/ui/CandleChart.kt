@@ -91,6 +91,10 @@ fun CandleChart(
     val currentPanFraction by rememberUpdatedState(panFraction)
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedButton(onClick = { showSma = !showSma }) { Text(if (showSma) "SMA 20 ON" else "SMA 20") }
+            OutlinedButton(onClick = { showEma = !showEma }) { Text(if (showEma) "EMA 20 ON" else "EMA 20") }
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
@@ -169,8 +173,10 @@ fun CandleChart(
                 val plotWidth = (right - left).coerceAtLeast(1f)
                 val plotHeight = (bottom - top).coerceAtLeast(1f)
 
-                val minPrice = visible.minOf { it.low!! }
-                val maxPrice = visible.maxOf { it.high!! }
+                val visibleSma = if (showSma) smaValues.subList(window.startIndex, window.endExclusive).filterNotNull() else emptyList()
+                val visibleEma = if (showEma) emaValues.subList(window.startIndex, window.endExclusive).filterNotNull() else emptyList()
+                val minPrice = min(visible.minOf { it.low!! }, (visibleSma + visibleEma).minOrNull() ?: Double.POSITIVE_INFINITY)
+                val maxPrice = max(visible.maxOf { it.high!! }, (visibleSma + visibleEma).maxOrNull() ?: Double.NEGATIVE_INFINITY)
                 val priceRange = (maxPrice - minPrice).takeIf { it > 0.0 }
                     ?: max(kotlin.math.abs(maxPrice) * 0.002, 0.01)
                 val gridColor = Color(0xFF52606B)
@@ -251,6 +257,28 @@ fun CandleChart(
                         )
                     }
                 }
+
+                fun drawIndicator(values: List<Double?>, color: Color) {
+                    val path = Path()
+                    var started = false
+                    values.forEachIndexed { index, value ->
+                        if (value == null || !value.isFinite()) {
+                            started = false
+                        } else {
+                            val x = left + slotWidth * (index + 0.5f)
+                            val y = bottom - ((value - minPrice) / priceRange).toFloat() * plotHeight
+                            if (started) path.lineTo(x, y) else path.moveTo(x, y)
+                            started = true
+                        }
+                    }
+                    drawPath(
+                        path,
+                        color = color,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                    )
+                }
+                if (showSma) drawIndicator(smaValues.subList(window.startIndex, window.endExclusive), Color(0xFFFFB74D))
+                if (showEma) drawIndicator(emaValues.subList(window.startIndex, window.endExclusive), Color(0xFF64B5F6))
 
                 drawLine(
                     color = gridColor,
