@@ -1,7 +1,6 @@
 package ru.moex.tradinglab.data.remote
 
 import com.google.gson.JsonElement
-import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -13,6 +12,18 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
+ * Testable boundary for a single MOEX ISS table request.
+ * The production implementation below performs read-only HTTPS requests.
+ */
+interface MoexIssTableClient {
+    suspend fun getTable(
+        endpoint: String,
+        query: Map<String, String> = emptyMap(),
+        tableName: String = endpoint.substringAfterLast('/').substringBefore('.')
+    ): IssTable
+}
+
+/**
  * Minimal read-only client for the public MOEX ISS HTTP API.
  *
  * This client does not place orders and deliberately returns source metadata
@@ -22,11 +33,11 @@ import java.util.concurrent.TimeUnit
 class MoexIssClient(
     private val httpClient: OkHttpClient = defaultHttpClient(),
     private val baseUrl: HttpUrl = "https://iss.moex.com/iss/".toHttpUrl()
-) {
-    suspend fun getTable(
+) : MoexIssTableClient {
+    override suspend fun getTable(
         endpoint: String,
-        query: Map<String, String> = emptyMap(),
-        tableName: String = endpoint.substringAfterLast('/').substringBefore('.')
+        query: Map<String, String>,
+        tableName: String
     ): IssTable = withContext(Dispatchers.IO) {
         val normalizedEndpoint = endpoint.trimStart('/')
         require(normalizedEndpoint.isNotBlank()) { "ISS endpoint must not be blank" }
