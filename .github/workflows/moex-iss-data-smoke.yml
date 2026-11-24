@@ -35,6 +35,14 @@ jobs:
           openssl x509 -in "$certificate" -noout -subject | grep -qi "Russian Trusted Root CA"
           openssl x509 -in "$certificate" -noout -ext basicConstraints | grep -q "CA:TRUE"
           openssl x509 -in "$certificate" -out "$RUNNER_TEMP/russian_trusted_root_ca.crt"
+          embedded_certificate="$GITHUB_WORKSPACE/app/src/main/res/raw/russian_trusted_root_ca.pem"
+          downloaded_fingerprint="$(openssl x509 -in "$certificate" -noout -fingerprint -sha256)"
+          embedded_fingerprint="$(openssl x509 -in "$embedded_certificate" -noout -fingerprint -sha256)"
+          if [ "$embedded_fingerprint" != "$downloaded_fingerprint" ]; then
+            echo "Android embedded NCA root does not match the official archive" >&2
+            exit 1
+          fi
+          echo "OK: Android embedded NCA root matches the official archive"
           sudo install -m 0644 "$RUNNER_TEMP/russian_trusted_root_ca.crt" /usr/local/share/ca-certificates/russian_trusted_root_ca.crt
           sudo update-ca-certificates
 
