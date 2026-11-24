@@ -46,11 +46,14 @@ class MarketRegimeAnalyzerTest {
 
     @Test
     fun missingCloseRestartsEmaWarmup() {
+        // Only 19 valid closes remain after the gap, fewer than slowPeriod=20.
         val candles = List(60) { index ->
-            candle(if (index == 30) null else index.toDouble() + 1.0, 1.0)
+            candle(if (index == 40) null else index.toDouble() + 1.0, 1.0)
         }
         val result = MarketRegimeAnalyzer.assessTrend(candles, 5, 20, 5)
         assertEquals(TrendDirection.INSUFFICIENT_DATA, result.direction)
+        assertNull(result.fastEma)
+        assertNull(result.slowEma)
     }
 
     @Test
