@@ -317,7 +317,7 @@ object BreakoutBacktestEngine {
         return if (isBuy) price * (1.0 + fraction) else price * (1.0 - fraction)
     }
 
-    private fun calculateMetrics(
+    internal fun calculateMetrics(
         initialCapital: Double,
         finalEquity: Double,
         trades: List<BacktestTrade>,
