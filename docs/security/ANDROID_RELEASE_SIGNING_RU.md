@@ -4,7 +4,7 @@
 
 Все устанавливаемые обновления приложения `ru.moex.tradinglab` должны подписываться одним и тем же приватным ключом. Debug APK из CI предназначен только для диагностики и не является установочным релизом.
 
-Текущая версия: `versionName=1.0.1`, `versionCode=2`. Идентификатор приложения сохранён: `ru.moex.tradinglab`.
+Текущая версия: `versionName=1.0.0`, `versionCode=1`. Идентификатор приложения сохранён: `ru.moex.tradinglab`.
 
 ## Используем существующий ключ MyCapital
 
@@ -49,7 +49,7 @@ GitHub не показывает сохранённые значения сек�
 2. Соберёт Release APK с существующим ключом MyCapital.
 3. Проверит подпись, package name, versionCode и versionName.
 4. Сверит SHA-256 сертификата с контрольным отпечатком выше.
-5. Опубликует артефакт `moex-trading-lab-release-v1.0.1`.
+5. Опубликует артефакт `moex-trading-lab-release-v1.0.0`.
 
 Debug APK с именем `moex-trading-lab-debug-diagnostics` не устанавливайте поверх Release и не используйте для обновления.
 
