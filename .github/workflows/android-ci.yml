@@ -57,7 +57,6 @@ jobs:
 
       - name: Restore persistent release keystore
         if: ${{ env.MOEX_RELEASE_KEYSTORE_BASE64 != '' && env.MOEX_RELEASE_STORE_PASSWORD != '' && env.MOEX_RELEASE_KEY_ALIAS != '' && env.MOEX_RELEASE_KEY_PASSWORD != '' }}
-        env:
         run: |
           mkdir -p "$RUNNER_TEMP/moex-signing"
           echo "$MOEX_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/moex-signing/release.jks"
