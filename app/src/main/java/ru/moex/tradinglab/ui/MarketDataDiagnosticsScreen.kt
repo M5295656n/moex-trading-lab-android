@@ -170,6 +170,10 @@ private fun HistoryLoadingSection(
         dao.observeCoverage(selected?.instrumentId.orEmpty(), interval)
     }
     val coverage by coverageFlow.collectAsState(initial = emptyList())
+    val candlesFlow = remember(selected?.instrumentId, interval) {
+        dao.observeCandles(selected?.instrumentId.orEmpty(), interval)
+    }
+    val candles by candlesFlow.collectAsState(initial = emptyList())
     val matching = remember(instruments, search) {
         val query = search.trim()
         if (query.isEmpty()) instruments.take(6) else instruments.filter {
@@ -289,6 +293,15 @@ private fun HistoryLoadingSection(
             val latest = coverage.firstOrNull()
             if (latest != null) {
                 HistoryCoverageSummary(latest)
+            }
+            if (selected != null) {
+                Text("График свечей", style = MaterialTheme.typography.titleMedium)
+                CandleChart(
+                    instrumentId = selected!!.instrumentId,
+                    intervalMinutes = interval,
+                    candles = candles,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }
