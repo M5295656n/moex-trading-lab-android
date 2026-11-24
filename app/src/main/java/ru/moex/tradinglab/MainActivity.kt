@@ -100,6 +100,7 @@ private fun TradingLabRoot(
                     when (MainTab.entries[selectedTab]) {
                         MainTab.CHART -> ChartScreen(
                             dao = dao,
+                            sync = sync,
                             onOpenDiagnostics = { selectedTab = MainTab.DATA.ordinal }
                         )
                         MainTab.DATA -> MarketDataDiagnosticsScreen(
