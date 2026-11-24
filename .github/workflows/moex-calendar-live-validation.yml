@@ -6,6 +6,7 @@ on:
       - "feature/moex-calendar-live-validation"
       - "feature/moex-calendar-access-research"
       - "feature/moex-iss-data-foundation"
+      - "feature/moex-session-validation-2026-11-24"
   workflow_dispatch:
 
 permissions:
