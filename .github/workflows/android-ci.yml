@@ -19,6 +19,11 @@ jobs:
   android-build:
     name: Tests and APK builds
     runs-on: ubuntu-latest
+    env:
+      MOEX_RELEASE_KEYSTORE_BASE64: ${{ secrets.MOEX_RELEASE_KEYSTORE_BASE64 }}
+      MOEX_RELEASE_STORE_PASSWORD: ${{ secrets.MOEX_RELEASE_STORE_PASSWORD }}
+      MOEX_RELEASE_KEY_ALIAS: ${{ secrets.MOEX_RELEASE_KEY_ALIAS }}
+      MOEX_RELEASE_KEY_PASSWORD: ${{ secrets.MOEX_RELEASE_KEY_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,33 +56,30 @@ jobs:
           if-no-files-found: error
 
       - name: Restore persistent release keystore
-        if: ${{ secrets.MOEX_RELEASE_KEYSTORE_BASE64 != '' && secrets.MOEX_RELEASE_STORE_PASSWORD != '' && secrets.MOEX_RELEASE_KEY_ALIAS != '' && secrets.MOEX_RELEASE_KEY_PASSWORD != '' }}
+        if: ${{ env.MOEX_RELEASE_KEYSTORE_BASE64 != '' && env.MOEX_RELEASE_STORE_PASSWORD != '' && env.MOEX_RELEASE_KEY_ALIAS != '' && env.MOEX_RELEASE_KEY_PASSWORD != '' }}
         env:
-          KEYSTORE_BASE64: ${{ secrets.MOEX_RELEASE_KEYSTORE_BASE64 }}
         run: |
           mkdir -p "$RUNNER_TEMP/moex-signing"
-          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/moex-signing/release.jks"
+          echo "$MOEX_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/moex-signing/release.jks"
           chmod 600 "$RUNNER_TEMP/moex-signing/release.jks"
 
       - name: Assemble signed release APK
-        if: ${{ secrets.MOEX_RELEASE_KEYSTORE_BASE64 != '' && secrets.MOEX_RELEASE_STORE_PASSWORD != '' && secrets.MOEX_RELEASE_KEY_ALIAS != '' && secrets.MOEX_RELEASE_KEY_PASSWORD != '' }}
+        if: ${{ env.MOEX_RELEASE_KEYSTORE_BASE64 != '' && env.MOEX_RELEASE_STORE_PASSWORD != '' && env.MOEX_RELEASE_KEY_ALIAS != '' && env.MOEX_RELEASE_KEY_PASSWORD != '' }}
         env:
           MOEX_RELEASE_STORE_FILE: ${{ runner.temp }}/moex-signing/release.jks
-          MOEX_RELEASE_STORE_PASSWORD: ${{ secrets.MOEX_RELEASE_STORE_PASSWORD }}
-          MOEX_RELEASE_KEY_ALIAS: ${{ secrets.MOEX_RELEASE_KEY_ALIAS }}
-          MOEX_RELEASE_KEY_PASSWORD: ${{ secrets.MOEX_RELEASE_KEY_PASSWORD }}
         run: gradle assembleRelease
 
       - name: Verify release APK signature and package metadata
-        if: ${{ secrets.MOEX_RELEASE_KEYSTORE_BASE64 != '' && secrets.MOEX_RELEASE_STORE_PASSWORD != '' && secrets.MOEX_RELEASE_KEY_ALIAS != '' && secrets.MOEX_RELEASE_KEY_PASSWORD != '' }}
+        if: ${{ env.MOEX_RELEASE_KEYSTORE_BASE64 != '' && env.MOEX_RELEASE_STORE_PASSWORD != '' && env.MOEX_RELEASE_KEY_ALIAS != '' && env.MOEX_RELEASE_KEY_PASSWORD != '' }}
         run: |
           APK="app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
-          $ANDROID_HOME/build-tools/*/apksigner verify --verbose "$APK"
-          aapt dump badging "$APK" | grep -E "package: name='ru.moex.tradinglab'|versionCode='2'|versionName='1.0.1'"
+          BUILD_TOOLS="$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/aapt" dump badging "$APK" | grep -E "package: name='ru.moex.tradinglab'.*versionCode='2'.*versionName='1.0.1'"
 
       - name: Upload signed release APK
-        if: ${{ secrets.MOEX_RELEASE_KEYSTORE_BASE64 != '' && secrets.MOEX_RELEASE_STORE_PASSWORD != '' && secrets.MOEX_RELEASE_KEY_ALIAS != '' && secrets.MOEX_RELEASE_KEY_PASSWORD != '' }}
+        if: ${{ env.MOEX_RELEASE_KEYSTORE_BASE64 != '' && env.MOEX_RELEASE_STORE_PASSWORD != '' && env.MOEX_RELEASE_KEY_ALIAS != '' && env.MOEX_RELEASE_KEY_PASSWORD != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: moex-trading-lab-release-v1.0.1
@@ -85,5 +87,5 @@ jobs:
           if-no-files-found: error
 
       - name: Explain missing signing configuration
-        if: ${{ secrets.MOEX_RELEASE_KEYSTORE_BASE64 == '' || secrets.MOEX_RELEASE_STORE_PASSWORD == '' || secrets.MOEX_RELEASE_KEY_ALIAS == '' || secrets.MOEX_RELEASE_KEY_PASSWORD == '' }}
+        if: ${{ env.MOEX_RELEASE_KEYSTORE_BASE64 == '' || env.MOEX_RELEASE_STORE_PASSWORD == '' || env.MOEX_RELEASE_KEY_ALIAS == '' || env.MOEX_RELEASE_KEY_PASSWORD == '' }}
         run: echo "::warning::Signed Release APK skipped. Configure all MOEX_RELEASE_* repository secrets using the project's signing instructions."
