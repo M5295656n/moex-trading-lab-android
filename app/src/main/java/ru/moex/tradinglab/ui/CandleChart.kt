@@ -66,11 +66,6 @@ fun CandleChart(
     candles: List<CandleEntity>,
     modifier: Modifier = Modifier
 ) {
-    var zoom by remember(instrumentId, intervalMinutes) { mutableFloatStateOf(1f) }
-    var panFraction by remember(instrumentId, intervalMinutes) { mutableFloatStateOf(1f) }
-
-    val currentZoom by rememberUpdatedState(zoom)
-    val currentPanFraction by rememberUpdatedState(panFraction)
     val chartable = remember(candles) {
         candles.filter { candle ->
             val open = candle.open
@@ -82,6 +77,11 @@ fun CandleChart(
                 high >= low
         }
     }
+    val initialZoom = (chartable.size / 120f).coerceAtLeast(1f)
+    var zoom by remember(instrumentId, intervalMinutes, chartable.size) { mutableFloatStateOf(initialZoom) }
+    var panFraction by remember(instrumentId, intervalMinutes, chartable.size) { mutableFloatStateOf(1f) }
+    val currentZoom by rememberUpdatedState(zoom)
+    val currentPanFraction by rememberUpdatedState(panFraction)
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
@@ -95,7 +95,7 @@ fun CandleChart(
             )
             OutlinedButton(
                 onClick = {
-                    zoom = 1f
+                    zoom = initialZoom
                     panFraction = 1f
                 }
             ) {
