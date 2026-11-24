@@ -22,7 +22,7 @@ jobs:
             local endpoint="$1"
             local table="$2"
             local response
-            response="$(curl --insecure --fail --silent --show-error --retry 2 "https://iss.moex.com/iss/${endpoint}.json?iss.meta=off&iss.only=${table}")"
+            response="$(curl --fail --silent --show-error --retry 2 "https://iss.moex.com/iss/${endpoint}.json?iss.meta=off&iss.only=${table}")"
             echo "$response" | jq -e --arg table "$table" '
               .[$table].columns | type == "array" and length > 0
             ' >/dev/null
@@ -48,7 +48,7 @@ jobs:
             local interval="$3"
             local endpoint="$4"
             local response
-            response="$(curl --insecure --fail --silent --show-error --retry 2 \
+            response="$(curl --fail --silent --show-error --retry 2 \
               "https://iss.moex.com/iss/${endpoint}/${secid}/candles.json?iss.meta=off&from=${from_date}&till=${till_date}&interval=${interval}&start=0&limit=500")"
 
             echo "$response" | jq -e '
@@ -72,7 +72,7 @@ jobs:
               local next_page
               begin_index="$(echo "$response" | jq '.candles.columns | index("begin")')"
               last_begin="$(echo "$response" | jq -r --argjson idx "$begin_index" '.candles.data[-1][$idx]')"
-              next_page="$(curl --insecure --fail --silent --show-error --retry 2 \
+              next_page="$(curl --fail --silent --show-error --retry 2 \
                 "https://iss.moex.com/iss/${endpoint}/${secid}/candles.json?iss.meta=off&from=${from_date}&till=${till_date}&interval=${interval}&start=500&limit=500")"
               echo "$next_page" | jq -e --arg last "$last_begin" --argjson idx "$begin_index" '
                 .candles.data as $rows
