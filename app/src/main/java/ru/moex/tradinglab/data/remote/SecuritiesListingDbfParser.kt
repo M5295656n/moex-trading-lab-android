@@ -90,7 +90,7 @@ object SecuritiesListingDbfParser {
             val name = descriptor.copyOfRange(0, 11)
                 .takeWhile { it != 0.toByte() }
                 .toByteArray()
-                .toString(StandardCharsets.US_ASCII)
+                .let { String(it, StandardCharsets.US_ASCII) }
                 .trim()
             require(name.isNotBlank()) { "DBF contains a blank field name" }
             val type = descriptor[11].toInt().toChar()
@@ -147,13 +147,13 @@ object SecuritiesListingDbfParser {
             fun fieldValue(name: String): String {
                 val field = fields.getValue(name)
                 return record.copyOfRange(field.offset, field.offset + field.length)
-                    .toString(StandardCharsets.US_ASCII)
+                    .let { String(it, StandardCharsets.US_ASCII) }
                     .trim()
             }
             fun parseDate(name: String): LocalDate {
                 val value = fieldValue(name)
                 require(value.matches(Regex("\\d{8}"))) { "DBF field '$name' contains an invalid date" }
-                return LocalDate.parse(value, dateFormatter)
+                return try { LocalDate.parse(value, dateFormatter) } catch (error: Exception) {\n                    throw IllegalArgumentException("DBF field '$name' contains an invalid date", error)\n                }
             }
             fun parseFlag(name: String): Boolean? = when (fieldValue(name)) {
                 "Y" -> true
