@@ -7,6 +7,7 @@ import org.junit.Test
 import ru.moex.tradinglab.data.local.BacktestHistoryResult
 import ru.moex.tradinglab.data.local.BacktestHistorySource
 import ru.moex.tradinglab.data.local.MarketInstrumentEntity
+import java.time.LocalDate
 
 class BacktestRunnerTest {
     @Test fun doesNotRunSimulatorWhenHistoryGateRejects() = runBlocking {
@@ -37,7 +38,7 @@ class BacktestRunnerTest {
         val candles = (0..60).map { index ->
             val price = 100.0 + index * 0.1
             BacktestCandle(
-                timestamp = "2026-01-${(index + 1).toString().padStart(2, '0')} 00:00:00",
+                timestamp = "${LocalDate.of(2026, 1, 1).plusDays(index.toLong())} 00:00:00",
                 open = price,
                 high = price + 1.0,
                 low = price - 1.0,
@@ -49,7 +50,7 @@ class BacktestRunnerTest {
             instrument = instrument,
             intervalMinutes = 24,
             from = "2026-01-01",
-            till = "2026-03-02",
+            till = "2026-03-03",
             candles = candles,
             source = "MOEX ISS",
             fetchedAtEpochMillis = 1L,
@@ -58,7 +59,7 @@ class BacktestRunnerTest {
         )
         val runner = BacktestRunner(BacktestHistorySource { _, _, _, _ -> ready })
         val result = runner.runBreakout(
-            "SHARES:TQBR:SBER", 24, "2026-01-01", "2026-03-02",
+            "SHARES:TQBR:SBER", 24, "2026-01-01", "2026-03-03",
             BacktestConfig(initialCapital = 100_000.0, lotSize = 1)
         )
         assertTrue(result is BacktestRunResult.Completed)
