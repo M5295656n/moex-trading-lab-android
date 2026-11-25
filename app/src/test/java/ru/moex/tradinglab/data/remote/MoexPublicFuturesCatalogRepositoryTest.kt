@@ -33,6 +33,18 @@ class MoexPublicFuturesCatalogRepositoryTest {
     }
 
     @Test
+    fun preservesFiniteNegativePreviousSettlementPrice() = runBlocking {
+        val client = PublicCatalogFake(
+            rows = listOf("""{"SECID":"SiZ6","PREVSETTLEPRICE":-12.5}""")
+        )
+
+        val result = MoexPublicFuturesCatalogRepository(client).load("SiZ6")
+
+        assertTrue(result is PublicFuturesMetadataResult.Ready)
+        assertEquals(-12.5, (result as PublicFuturesMetadataResult.Ready).metadata.previousSettlementPrice!!, 0.0000001)
+    }
+
+    @Test
     fun doesNotInventTickValueOrMarginWhenPublicCatalogOmitsThem() = runBlocking {
         val client = PublicCatalogFake(
             rows = listOf("""{"SECID":"SiZ6","MINSTEP":1}""")
