@@ -158,15 +158,15 @@ internal object FuturesSpecificationMapper {
         risksRows: List<Map<String, String?>>,
         receivedAtEpochMillis: Long
     ): FuturesSpecificationLoadResult {
-        val security = uniqueMatch("справочнике инструментов", secId, securitiesRows)
+        val security = uniqueMatch(secId, securitiesRows)
             ?: return FuturesSpecificationLoadResult.Rejected(
                 "Для $secId нет однозначной записи в справочнике фьючерсов MOEX"
             )
-        val params = uniqueMatch("параметрах контракта", secId, paramsRows)
+        val params = uniqueMatch(secId, paramsRows)
             ?: return FuturesSpecificationLoadResult.Rejected(
                 "Для $secId нет однозначной записи с шагом цены в MOEX ISS"
             )
-        val risk = uniqueMatch("риск-параметрах", secId, risksRows)
+        val risk = uniqueMatch(secId, risksRows)
             ?: return FuturesSpecificationLoadResult.Rejected(
                 "Для $secId нет однозначной записи в риск-параметрах MOEX"
             )
@@ -301,7 +301,6 @@ internal object FuturesSpecificationMapper {
     }
 
     private fun uniqueMatch(
-        tableName: String,
         secId: String,
         rows: List<Map<String, String?>>
     ): Map<String, String?>? {
@@ -341,10 +340,16 @@ internal object FuturesSpecificationMapper {
 
     private fun parseTimestamp(value: String): Long? {
         runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()?.let { return it }
-        val normalized = value.trim().replace('T', ' ')
+        val normalized = value.trim()
         localDateTimeFormatters.forEach { formatter ->
             runCatching {
                 LocalDateTime.parse(normalized, formatter).atZone(moscow).toInstant().toEpochMilli()
+            }.getOrNull()?.let { return it }
+        }
+        val spaceNormalized = normalized.replace('T', ' ')
+        localDateTimeFormatters.forEach { formatter ->
+            runCatching {
+                LocalDateTime.parse(spaceNormalized, formatter).atZone(moscow).toInstant().toEpochMilli()
             }.getOrNull()?.let { return it }
         }
         return parseDate(value)?.atStartOfDay(moscow)?.toInstant()?.toEpochMilli()
