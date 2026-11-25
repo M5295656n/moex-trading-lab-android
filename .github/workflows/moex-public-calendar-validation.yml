@@ -98,7 +98,10 @@ jobs:
               date,url=row[2],row[6]
               full='https://iss.moex.com'+url
               path='/tmp/securities-'+date+'.zip'
-              subprocess.run(['curl','--insecure','--fail','--silent','--show-error','--location','--max-time','90','-o',path,full],check=True)
+              proc=subprocess.run(['curl','--insecure','--silent','--show-error','--location','--max-time','90','-o',path,'-w','%{http_code}|%{content_type}|%{size_download}|%{url_effective}',full],check=True,capture_output=True,text=True)
+              print('ARCHIVE_DOWNLOAD=',date,proc.stdout,'FILE_PREFIX=',open(path,'rb').read(100))
+              if not proc.stdout.startswith('200|'):
+                  raise SystemExit(f'Archive HTTP failure for {date}: {proc.stdout}')
               with zipfile.ZipFile(path) as z:
                   info=z.infolist()[0]
                   raw=z.read(info)
