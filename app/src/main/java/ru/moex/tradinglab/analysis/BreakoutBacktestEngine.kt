@@ -224,7 +224,7 @@ object BreakoutBacktestEngine {
         }
     }
 
-    private fun calculateAtr(candles: List<BacktestCandle>, period: Int): List<Double?> {
+    internal fun calculateAtr(candles: List<BacktestCandle>, period: Int): List<Double?> {
         val result = MutableList<Double?>(candles.size) { null }
         var previousClose: Double? = null
         var sum = 0.0
@@ -246,14 +246,14 @@ object BreakoutBacktestEngine {
                 count++
                 if (count == period) {
                     val seed = sum / period
-                    if (seed.isFinite() && seed > 0.0) {
+                    if (seed.isFinite() && seed >= 0.0) {
                         result[index] = seed
                         previousAtr = seed
                     }
                 }
             } else {
                 val next = (priorAtr * (period - 1) + tr) / period
-                if (next.isFinite() && next > 0.0) {
+                if (next.isFinite() && next >= 0.0) {
                     result[index] = next
                     previousAtr = next
                 }
