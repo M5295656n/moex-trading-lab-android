@@ -105,7 +105,7 @@ class MoexCalendarRepository(private val client: MoexIssTableClient) {
         tableName: String
     ): List<Map<String, JsonElement?>> {
         val allRows = mutableListOf<Map<String, JsonElement?>>()
-        val seenPages = mutableSetOf<Int>()
+        val seenPages = mutableSetOf<String>()
         var start = 0
 
         repeat(MAX_PAGES) {
@@ -125,7 +125,7 @@ class MoexCalendarRepository(private val client: MoexIssTableClient) {
                 )
             }
 
-            val fingerprint = page.hashCode()
+            val fingerprint = page.map { row ->\n                row.toSortedMap().mapValues { (_, value) -> value?.toString() }\n            }.toString()
             if (!seenPages.add(fingerprint)) {
                 throw MoexIssException.InvalidResponse(
                     "MOEX calendar returned a repeated page; completeness is unknown"
