@@ -22,6 +22,7 @@ import ru.moex.tradinglab.data.local.MarketDataStorage
 import ru.moex.tradinglab.data.local.TradingLabDatabase
 import ru.moex.tradinglab.data.remote.MoexIssClient
 import ru.moex.tradinglab.data.remote.MoexIssDataRepository
+import ru.moex.tradinglab.data.remote.MoexCalendarRepository
 import ru.moex.tradinglab.data.remote.MoexFuturesSpecificationRepository
 import ru.moex.tradinglab.data.remote.MoexPublicFuturesCatalogRepository
 import ru.moex.tradinglab.data.sync.MoexMarketDataSync
@@ -38,6 +39,8 @@ private enum class MainTab(val title: String) {
 
 class MainActivity : ComponentActivity() {
     private val moexIssClient by lazy { MoexIssClient() }
+
+    private val calendarRepository by lazy { MoexCalendarRepository(moexIssClient) }
 
     private val futuresSpecifications by lazy {
         MoexFuturesSpecificationRepository(moexIssClient)
@@ -131,7 +134,11 @@ private fun TradingLabRoot(
                             publicFuturesCatalog = publicFuturesCatalog,
                             onOpenDiagnostics = { selectedTab = MainTab.DATA.ordinal }
                         )
-                        MainTab.BACKTEST -> BacktestScreen(dao = dao)
+                        MainTab.BACKTEST -> BacktestScreen(
+                            dao = dao,
+                            sync = sync,
+                            calendar = calendarRepository
+                        )
                         MainTab.DATA -> MarketDataDiagnosticsScreen(
                             dao = dao,
                             sync = sync
