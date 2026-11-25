@@ -56,6 +56,21 @@ class BreakoutBacktestEngineTest {
         assertEquals(5.0, metrics.maxDrawdownPercent, 1e-9)
     }
 
+    @Test
+    fun atrRecoversWhenSeedPeriodHasZeroTrueRange() {
+        val candles = listOf(
+            BacktestCandle("2026-01-01", 100.0, 100.0, 100.0, 100.0, 100.0),
+            BacktestCandle("2026-01-02", 100.0, 100.0, 100.0, 100.0, 100.0),
+            BacktestCandle("2026-01-03", 100.0, 100.0, 100.0, 100.0, 100.0),
+            BacktestCandle("2026-01-04", 100.0, 101.0, 100.0, 100.0, 100.0)
+        )
+
+        val atr = BreakoutBacktestEngine.calculateAtr(candles, period = 3)
+
+        assertEquals(0.0, atr[2]!!, 1e-9)
+        assertEquals(1.0 / 3.0, atr[3]!!, 1e-9)
+    }
+
     private fun candle(
         timestamp: String,
         close: Double,
