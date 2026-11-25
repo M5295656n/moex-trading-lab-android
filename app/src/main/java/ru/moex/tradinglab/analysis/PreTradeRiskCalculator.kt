@@ -42,6 +42,8 @@ data class PreTradeRiskInput(
     val slippageBasisPointsPerSide: Double = 5.0,
     val futuresSpec: FuturesRiskSpec? = null,
     val commissionPerContractPerSide: Double? = null,
+    val currentTimeEpochMillis: Long? = null,
+    val maxSpecificationAgeMillis: Long = 86_400_000L,
     val asOfDate: String
 )
 
@@ -96,6 +98,15 @@ object PreTradeRiskCalculator {
         } else null
 
         if (spec != null) {
+            val now = input.currentTimeEpochMillis
+                ?: return rejected("Не задано текущее время для проверки актуальности спецификации")
+            if (now <= 0L || input.maxSpecificationAgeMillis <= 0L) {
+                return rejected("Параметры проверки актуальности спецификации заданы некорректно")
+            }
+            if (spec.fetchedAtEpochMillis > now) return rejected("Время получения спецификации находится в будущем")
+            if (now - spec.fetchedAtEpochMillis > input.maxSpecificationAgeMillis) {
+                return rejected("Спецификация фьючерса устарела: требуется обновление данных")
+            }
             if (input.commissionPerContractPerSide == null) return rejected("Не задана комиссия брокера за контракт")
             if (LocalDate.parse(spec.expirationDate).isBefore(asOfDate)) return rejected("Срок экспирации контракта уже прошёл")
             if (!isAligned(input.entryPrice, spec.tickSize) ||
