@@ -136,7 +136,6 @@ class MoexCalendarRepository(private val client: MoexIssTableClient) {
 
             allRows += page
             start += page.size
-            if (page.size < PAGE_SIZE) return allRows
         }
 
         throw MoexIssException.InvalidResponse(
