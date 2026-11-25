@@ -19,6 +19,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 abstract class TradingLabDatabase : RoomDatabase() {
     abstract fun instrumentDao(): InstrumentDao
     abstract fun marketDataDao(): MarketDataDao
+    abstract fun securitiesListingDao(): SecuritiesListingDao
 
     companion object {
         /**
@@ -109,6 +110,51 @@ abstract class TradingLabDatabase : RoomDatabase() {
                         skippedRows INTEGER NOT NULL
                     )
                 """.trimIndent())
+            }
+        }
+
+        /** Stores local, date-stamped snapshots of stock security/board session permissions. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS securities_listing_snapshots (
+                        snapshotId TEXT NOT NULL,
+                        tradeDate TEXT NOT NULL,
+                        source TEXT NOT NULL,
+                        sourceUrl TEXT NOT NULL,
+                        archiveMember TEXT NOT NULL,
+                        sha256 TEXT NOT NULL,
+                        fetchedAtEpochMillis INTEGER NOT NULL,
+                        declaredRecordCount INTEGER NOT NULL,
+                        activeRecordCount INTEGER NOT NULL,
+                        storedEntryCount INTEGER NOT NULL,
+                        filteredOutEntryCount INTEGER NOT NULL,
+                        deletedRecordCount INTEGER NOT NULL,
+                        duplicateRecordCount INTEGER NOT NULL,
+                        unknownFlagCount INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        PRIMARY KEY(snapshotId)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_securities_listing_snapshots_tradeDate_fetchedAtEpochMillis ON securities_listing_snapshots(tradeDate, fetchedAtEpochMillis)")
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS securities_listing_entries (
+                        snapshotId TEXT NOT NULL,
+                        tradeDate TEXT NOT NULL,
+                        tradeSessionDate TEXT NOT NULL,
+                        boardId TEXT NOT NULL,
+                        secId TEXT NOT NULL,
+                        morningSession INTEGER,
+                        eveningSession INTEGER,
+                        weekendSession INTEGER,
+                        PRIMARY KEY(snapshotId, tradeDate, tradeSessionDate, boardId, secId),
+                        FOREIGN KEY(snapshotId) REFERENCES securities_listing_snapshots(snapshotId)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_securities_listing_entries_snapshotId ON securities_listing_entries(snapshotId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_securities_listing_entries_secId_boardId_tradeDate ON securities_listing_entries(secId, boardId, tradeDate)")
             }
         }
     }
