@@ -101,7 +101,7 @@ jobs:
               proc=subprocess.run(['curl','--insecure','--silent','--show-error','--location','--max-time','90','-o',path,'-w','%{http_code}|%{content_type}|%{size_download}|%{url_effective}',full],check=True,capture_output=True,text=True)
               print('ARCHIVE_DOWNLOAD=',date,proc.stdout,'FILE_PREFIX=',open(path,'rb').read(100))
               prefix=open(path,'rb').read(4)
-              if not proc.stdout.startswith('200|') or prefix != b'PK\\x03\\x04':
+              if not proc.stdout.startswith('200|') or prefix != b'PK\x03\x04':
                   print('HISTORICAL_ARCHIVE_NOT_DOWNLOADABLE=',date,proc.stdout,'PREFIX=',prefix)
                   continue
               with zipfile.ZipFile(path) as z:
