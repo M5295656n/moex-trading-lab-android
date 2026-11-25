@@ -54,7 +54,7 @@ class PreTradeRiskCalculatorTest {
             instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
             entryPrice = 100.0, stopPrice = 90.0, targetPrice = 120.0,
             commissionRatePerSide = 0.0001, slippageBasisPointsPerSide = 1.0,
-            futuresSpec = spec, asOfDate = "2026-11-25"
+            futuresSpec = spec, commissionPerContractPerSide = 1.2, asOfDate = "2026-11-25"
         )
         val result = PreTradeRiskCalculator.calculate(input)
         assertTrue(result is PreTradeRiskResult.Ready)
@@ -69,7 +69,7 @@ class PreTradeRiskCalculatorTest {
         val input = PreTradeRiskInput(
             instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
             entryPrice = 100.5, stopPrice = 90.0, targetPrice = 120.0,
-            futuresSpec = spec, asOfDate = "2026-11-25"
+            futuresSpec = spec, commissionPerContractPerSide = 1.0, asOfDate = "2026-11-25"
         )
         assertTrue((PreTradeRiskCalculator.calculate(input) as PreTradeRiskResult.Rejected).reason.contains("шагу"))
     }
@@ -79,17 +79,16 @@ class PreTradeRiskCalculatorTest {
         val input = PreTradeRiskInput(
             instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
             entryPrice = 100.0, stopPrice = 90.0, targetPrice = 120.0,
-            futuresSpec = spec, asOfDate = "2026-11-25"
+            futuresSpec = spec, commissionPerContractPerSide = 1.0, asOfDate = "2026-11-25"
         )
         assertTrue((PreTradeRiskCalculator.calculate(input) as PreTradeRiskResult.Rejected).reason.contains("экспирации"))
     }
 
-    @Test fun handlesShortDirectionWithAdverseCosts() {
+    @Test fun rejectsEquityShortWithoutBorrowAndMarginModel() {
         val input = equityInput(entry = 100.0, stop = 105.0, target = 90.0).copy(direction = TradeDirection.SHORT)
         val result = PreTradeRiskCalculator.calculate(input)
-        assertTrue(result is PreTradeRiskResult.Ready)
-        val ready = result as PreTradeRiskResult.Ready
-        assertTrue(ready.estimatedMaximumLoss <= ready.riskBudget)
+        assertTrue(result is PreTradeRiskResult.Rejected)
+        assertTrue((result as PreTradeRiskResult.Rejected).reason.contains("маржинальных"))
     }
 
     @Test fun rejectsStopAndTargetOnWrongSide() {
