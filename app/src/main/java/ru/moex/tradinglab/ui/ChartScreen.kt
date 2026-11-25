@@ -34,6 +34,7 @@ import ru.moex.tradinglab.data.local.MarketInstrumentEntity
 import ru.moex.tradinglab.data.remote.IssInstrument
 import ru.moex.tradinglab.data.remote.MoexMarket
 import ru.moex.tradinglab.data.remote.MoexFuturesSpecificationRepository
+import ru.moex.tradinglab.data.remote.MoexPublicFuturesCatalogRepository
 import ru.moex.tradinglab.data.sync.MoexMarketDataSync
 import java.lang.reflect.Type
 import java.text.SimpleDateFormat
@@ -45,6 +46,7 @@ fun ChartScreen(
     dao: MarketDataDao,
     sync: MoexMarketDataSync,
     futuresSpecifications: MoexFuturesSpecificationRepository,
+    publicFuturesCatalog: MoexPublicFuturesCatalogRepository,
     onOpenDiagnostics: () -> Unit
 ) {
     val instruments by dao.observeInstruments().collectAsState(initial = emptyList())
@@ -84,22 +86,17 @@ fun ChartScreen(
 
     LaunchedEffect(selected?.instrumentId, interval) {
         val instrument = selected
-        if (instrument != null && candles.isEmpty()) {
-            loadHistory(instrument)
-        }
+        if (instrument != null && candles.isEmpty()) loadHistory(instrument)
     }
 
     val matching = remember(instruments, search) {
         val query = search.trim()
-        if (query.isEmpty()) {
-            instruments.take(8)
-        } else {
-            instruments.filter {
-                it.secId.contains(query, ignoreCase = true) ||
-                    it.name.contains(query, ignoreCase = true) ||
-                    it.shortName.orEmpty().contains(query, ignoreCase = true)
-            }.take(10)
-        }
+        if (query.isEmpty()) instruments.take(8)
+        else instruments.filter {
+            it.secId.contains(query, ignoreCase = true) ||
+                it.name.contains(query, ignoreCase = true) ||
+                it.shortName.orEmpty().contains(query, ignoreCase = true)
+        }.take(10)
     }
 
     LazyColumn(
@@ -134,10 +131,7 @@ fun ChartScreen(
         if (selected == null) {
             items(matching, key = { it.instrumentId }) { instrument ->
                 OutlinedButton(
-                    onClick = {
-                        selected = instrument
-                        loadError = null
-                    },
+                    onClick = { selected = instrument; loadError = null },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -155,33 +149,22 @@ fun ChartScreen(
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text(
-                            "${instrument.secId} · ${instrument.name}",
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                        Text("${instrument.secId} · ${instrument.name}", style = MaterialTheme.typography.titleMedium)
                         Text(
                             "${instrument.market} / ${instrument.boardId ?: "—"}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        OutlinedButton(onClick = {
-                            selected = null
-                            loadError = null
-                        }) {
+                        OutlinedButton(onClick = { selected = null; loadError = null }) {
                             Text("Выбрать другой инструмент")
                         }
                         Text("Таймфрейм", style = MaterialTheme.typography.labelLarge)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf(1, 10, 60, 24).forEach { value ->
                                 OutlinedButton(
-                                    onClick = {
-                                        interval = value
-                                        loadError = null
-                                    },
+                                    onClick = { interval = value; loadError = null },
                                     enabled = !isLoadingHistory
-                                ) {
-                                    Text(if (value == 24) "1д" else "${value}м")
-                                }
+                                ) { Text(if (value == 24) "1д" else "${value}м") }
                             }
                         }
                         if (isLoadingHistory) {
@@ -212,14 +195,8 @@ fun ChartScreen(
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
-                        HistoryCoverageDetails(
-                            coverage = coverage.firstOrNull(),
-                            storedCandleCount = candles.size
-                        )
-                        OutlinedButton(
-                            onClick = onOpenDiagnostics,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
+                        HistoryCoverageDetails(coverage = coverage.firstOrNull(), storedCandleCount = candles.size)
+                        OutlinedButton(onClick = onOpenDiagnostics, modifier = Modifier.fillMaxWidth()) {
                             Text("Загрузка и диагностика данных")
                         }
                         CandleChart(
@@ -228,7 +205,13 @@ fun ChartScreen(
                             candles = candles,
                             modifier = Modifier.fillMaxWidth()
                         )
-
+                        if (instrument.market == "FUTURES") {
+                            PublicFuturesMetadataCard(
+                                instrument = instrument,
+                                repository = publicFuturesCatalog,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                         PreTradeRiskCard(
                             instrument = instrument,
                             futuresSpecificationRepository = futuresSpecifications,
@@ -247,9 +230,7 @@ fun ChartScreen(
                             "После выбора приложение автоматически запросит историю свечей MOEX для выбранного таймфрейма.",
                             style = MaterialTheme.typography.bodySmall
                         )
-                        OutlinedButton(onClick = onOpenDiagnostics) {
-                            Text("Открыть загрузку истории")
-                        }
+                        OutlinedButton(onClick = onOpenDiagnostics) { Text("Открыть загрузку истории") }
                     }
                 }
             }
@@ -263,24 +244,14 @@ private fun MarketInstrumentEntity.toIssInstrument(): IssInstrument {
         runCatching { Gson().fromJson<Map<String, String?>>(it, fieldsType) }.getOrNull()
     }.orEmpty()
     return IssInstrument(
-        secId = secId,
-        name = name,
-        shortName = shortName,
-        isin = isin,
-        boardId = boardId,
-        lotSize = lotSize,
-        currency = currency,
-        market = MoexMarket.valueOf(market),
-        source = source,
-        rawFields = fields
+        secId = secId, name = name, shortName = shortName, isin = isin,
+        boardId = boardId, lotSize = lotSize, currency = currency,
+        market = MoexMarket.valueOf(market), source = source, rawFields = fields
     )
 }
 
 @Composable
-private fun HistoryCoverageDetails(
-    coverage: HistoryCoverageEntity?,
-    storedCandleCount: Int
-) {
+private fun HistoryCoverageDetails(coverage: HistoryCoverageEntity?, storedCandleCount: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text("Состояние истории", style = MaterialTheme.typography.titleSmall)
         Text("Свечей сохранено в Room: $storedCandleCount", style = MaterialTheme.typography.bodySmall)
@@ -292,29 +263,19 @@ private fun HistoryCoverageDetails(
             )
             return
         }
-
         Text("Источник: ${coverage.source}", style = MaterialTheme.typography.bodySmall)
         Text(
             "Диапазон: ${coverage.firstCandleBegin ?: "нет данных"} — ${coverage.lastCandleBegin ?: "нет данных"}",
             style = MaterialTheme.typography.bodySmall
         )
-        Text(
-            "Пагинация: ${chartPaginationLabel(coverage.paginationStatus)}",
-            style = MaterialTheme.typography.bodySmall
-        )
-        Text(
-            "Страниц: ${coverage.pageCount} · размер страницы: ${coverage.pageSize}",
-            style = MaterialTheme.typography.bodySmall
-        )
+        Text("Пагинация: ${chartPaginationLabel(coverage.paginationStatus)}", style = MaterialTheme.typography.bodySmall)
+        Text("Страниц: ${coverage.pageCount} · размер страницы: ${coverage.pageSize}", style = MaterialTheme.typography.bodySmall)
         Text("Пропущено некорректных строк: ${coverage.skippedRows}", style = MaterialTheme.typography.bodySmall)
         Text(
             "Пропуски свечей: ${coverage.gapCount?.toString() ?: "не оценивались — нет проверенного расписания"}",
             style = MaterialTheme.typography.bodySmall
         )
-        Text(
-            "Актуальность: ${chartFreshnessLabel(coverage.freshnessStatus)}",
-            style = MaterialTheme.typography.bodySmall
-        )
+        Text("Актуальность: ${chartFreshnessLabel(coverage.freshnessStatus)}", style = MaterialTheme.typography.bodySmall)
         Text(
             "Получено: ${formatChartTimestamp(coverage.fetchedAtEpochMillis)}",
             style = MaterialTheme.typography.bodySmall,
