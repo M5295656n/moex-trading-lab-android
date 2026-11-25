@@ -153,9 +153,7 @@ object SecuritiesListingDbfParser {
             fun parseDate(name: String): LocalDate {
                 val value = fieldValue(name)
                 require(value.matches(Regex("\\d{8}"))) { "DBF field '$name' contains an invalid date" }
-                return try { LocalDate.parse(value, dateFormatter) } catch (error: Exception) {
-                    throw IllegalArgumentException("DBF field '$name' contains an invalid date", error)
-                }
+                return LocalDate.parse(value, dateFormatter)
             }
             fun parseFlag(name: String): Boolean? = when (fieldValue(name)) {
                 "Y" -> true
