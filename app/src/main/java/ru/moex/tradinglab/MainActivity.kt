@@ -22,6 +22,7 @@ import ru.moex.tradinglab.data.local.MarketDataStorage
 import ru.moex.tradinglab.data.local.TradingLabDatabase
 import ru.moex.tradinglab.data.remote.MoexIssClient
 import ru.moex.tradinglab.data.remote.MoexIssDataRepository
+import ru.moex.tradinglab.data.remote.MoexFuturesSpecificationRepository
 import ru.moex.tradinglab.data.sync.MoexMarketDataSync
 import ru.moex.tradinglab.ui.ChartScreen
 import ru.moex.tradinglab.ui.MarketDataDiagnosticsScreen
@@ -33,6 +34,12 @@ private enum class MainTab(val title: String) {
 }
 
 class MainActivity : ComponentActivity() {
+    private val moexIssClient by lazy { MoexIssClient() }
+
+    private val futuresSpecifications by lazy {
+        MoexFuturesSpecificationRepository(moexIssClient)
+    }
+
     private val database by lazy {
         Room.databaseBuilder(
             applicationContext,
@@ -48,7 +55,7 @@ class MainActivity : ComponentActivity() {
 
     private val marketDataSync by lazy {
         MoexMarketDataSync(
-            remote = MoexIssDataRepository(MoexIssClient()),
+            remote = MoexIssDataRepository(moexIssClient),
             storage = MarketDataStorage(database.marketDataDao())
         )
     }
@@ -59,7 +66,8 @@ class MainActivity : ComponentActivity() {
             MoexTradingLabTheme {
                 TradingLabRoot(
                     database = database,
-                    sync = marketDataSync
+                    sync = marketDataSync,
+                    futuresSpecifications = futuresSpecifications
                 )
             }
         }
@@ -69,7 +77,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun TradingLabRoot(
     database: TradingLabDatabase,
-    sync: MoexMarketDataSync
+    sync: MoexMarketDataSync,
+    futuresSpecifications: MoexFuturesSpecificationRepository
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(MainTab.CHART.ordinal) }
     val dao = database.marketDataDao()
@@ -101,6 +110,7 @@ private fun TradingLabRoot(
                         MainTab.CHART -> ChartScreen(
                             dao = dao,
                             sync = sync,
+                            futuresSpecifications = futuresSpecifications,
                             onOpenDiagnostics = { selectedTab = MainTab.DATA.ordinal }
                         )
                         MainTab.DATA -> MarketDataDiagnosticsScreen(
