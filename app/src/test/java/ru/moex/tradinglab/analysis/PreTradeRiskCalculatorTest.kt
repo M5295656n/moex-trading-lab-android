@@ -54,7 +54,7 @@ class PreTradeRiskCalculatorTest {
             instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
             entryPrice = 100.0, stopPrice = 90.0, targetPrice = 120.0,
             commissionRatePerSide = 0.0001, slippageBasisPointsPerSide = 1.0,
-            futuresSpec = spec, commissionPerContractPerSide = 1.2, asOfDate = "2026-11-25"
+            futuresSpec = spec, commissionPerContractPerSide = 1.2, currentTimeEpochMillis = 2_000L, asOfDate = "2026-11-25"
         )
         val result = PreTradeRiskCalculator.calculate(input)
         assertTrue(result is PreTradeRiskResult.Ready)
@@ -69,7 +69,7 @@ class PreTradeRiskCalculatorTest {
         val input = PreTradeRiskInput(
             instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
             entryPrice = 100.5, stopPrice = 90.0, targetPrice = 120.0,
-            futuresSpec = spec, commissionPerContractPerSide = 1.0, asOfDate = "2026-11-25"
+            futuresSpec = spec, commissionPerContractPerSide = 1.0, currentTimeEpochMillis = 2_000L, asOfDate = "2026-11-25"
         )
         assertTrue((PreTradeRiskCalculator.calculate(input) as PreTradeRiskResult.Rejected).reason.contains("шагу"))
     }
@@ -89,6 +89,21 @@ class PreTradeRiskCalculatorTest {
         val result = PreTradeRiskCalculator.calculate(input)
         assertTrue(result is PreTradeRiskResult.Rejected)
         assertTrue((result as PreTradeRiskResult.Rejected).reason.contains("маржинальных"))
+    }
+
+
+    @Test fun rejectsStaleFuturesSpecification() {
+        val spec = FuturesRiskSpec(1.0, 1.0, 100.0, "2026-12-17", "MOEX", 1_000L)
+        val input = PreTradeRiskInput(
+            instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
+            entryPrice = 100.0, stopPrice = 90.0, targetPrice = 120.0,
+            futuresSpec = spec, commissionPerContractPerSide = 1.0,
+            currentTimeEpochMillis = 90_000_000L, maxSpecificationAgeMillis = 86_400_000L,
+            asOfDate = "2026-11-25"
+        )
+        val result = PreTradeRiskCalculator.calculate(input)
+        assertTrue(result is PreTradeRiskResult.Rejected)
+        assertTrue((result as PreTradeRiskResult.Rejected).reason.contains("устарела"))
     }
 
     @Test fun rejectsStopAndTargetOnWrongSide() {
