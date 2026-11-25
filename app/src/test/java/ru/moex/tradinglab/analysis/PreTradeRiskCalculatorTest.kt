@@ -97,13 +97,14 @@ class PreTradeRiskCalculatorTest {
 
 
     @Test fun rejectsStaleFuturesSpecification() {
-        val spec = FuturesRiskSpec(1.0, 1.0, 100.0, "2026-12-17", "MOEX", freshSpecTime)
+        val staleNow = testNow + 90_000_000L
+        val spec = FuturesRiskSpec(1.0, 1.0, 100.0, "2026-12-17", "MOEX", staleNow - 90_000_001L)
         val input = PreTradeRiskInput(
             instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
             entryPrice = 100.0, stopPrice = 90.0, targetPrice = 120.0,
             futuresSpec = spec, commissionPerContractPerSide = 1.0,
-            currentTimeEpochMillis = testNow + 90_000_000L, maxSpecificationAgeMillis = 86_400_000L,
-            asOfDate = "2026-11-25"
+            currentTimeEpochMillis = staleNow, maxSpecificationAgeMillis = 86_400_000L,
+            asOfDate = "2026-11-26"
         )
         val result = PreTradeRiskCalculator.calculate(input)
         assertTrue(result is PreTradeRiskResult.Rejected)
