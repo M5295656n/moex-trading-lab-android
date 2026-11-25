@@ -77,7 +77,7 @@ class MoexPublicFuturesCatalogRepository(
                 minStep = minStep,
                 decimals = row["DECIMALS"]?.toIntOrNull()?.takeIf { it >= 0 },
                 previousSettlementPrice = row.number("PREVSETTLEPRICE")
-                    ?.takeIf { it.isFinite() && it > 0.0 },
+                    ?.takeIf { it.isFinite() },
                 lastTradeDate = row.date("LASTTRADEDATE"),
                 lastDeliveryDate = row.date("LASTDELDATE"),
                 source = "MOEX ISS public FORTS securities catalog",
