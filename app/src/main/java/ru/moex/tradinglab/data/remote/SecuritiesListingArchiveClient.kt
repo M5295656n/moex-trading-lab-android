@@ -10,6 +10,10 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
+interface SecuritiesListingArchiveSource {
+    suspend fun download(): DownloadedSecuritiesListingArchive
+}
+
 data class DownloadedSecuritiesListingArchive(
     val bytes: ByteArray,
     val sha256: String,
@@ -21,8 +25,8 @@ data class DownloadedSecuritiesListingArchive(
 class SecuritiesListingArchiveClient(
     private val httpClient: OkHttpClient = defaultHttpClient(),
     private val archiveUrl: String = DEFAULT_ARCHIVE_URL
-) {
-    suspend fun download(): DownloadedSecuritiesListingArchive = withContext(Dispatchers.IO) {
+ ) : SecuritiesListingArchiveSource {
+    override suspend fun download(): DownloadedSecuritiesListingArchive = withContext(Dispatchers.IO) {
         val url = archiveUrl.toHttpUrl()
         require(url.isHttps) { "SecuritiesListing archive must use HTTPS" }
         val request = Request.Builder()
