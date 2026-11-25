@@ -148,7 +148,8 @@ jobs:
 
           if len(raw) < 33:
               raise SystemExit('DBF is too short')
-          record_count=struct.unpack_from('<I', raw, 4)[0]\ncodepage_marker=raw[29]
+          record_count=struct.unpack_from('<I', raw, 4)[0]
+          codepage_marker=raw[29]
           header_length=struct.unpack_from('<H', raw, 8)[0]
           record_length=struct.unpack_from('<H', raw, 10)[0]
           fields=[]
@@ -157,7 +158,7 @@ jobs:
               descriptor=raw[offset:offset+32]
               if len(descriptor) != 32:
                   raise SystemExit('Truncated DBF field descriptor')
-              name=descriptor[:11].split(b'\\0',1)[0].decode('ascii', 'replace').strip()
+              name=descriptor[:11].split(b'\x00',1)[0].decode('ascii', 'replace').strip()
               fields.append({'name':name,'type':chr(descriptor[11]),'length':descriptor[16],'decimals':descriptor[17]})
               offset += 32
           if not fields or header_length + record_count * record_length > len(raw):
@@ -166,10 +167,12 @@ jobs:
           if expected != record_length:
               raise SystemExit(f'Record length mismatch: header={record_length}, fields={expected}')
           print('DBF_SCHEMA=', json.dumps({
-              'member':names[0], 'record_count':record_count, 'header_length':header_length, 'codepage_marker':codepage_marker,
-              'record_length':record_length, 'fields':fields
+              'member':names[0], 'record_count':record_count, 'header_length':header_length,
+              'record_length':record_length, 'codepage_marker':codepage_marker, 'fields':fields
           }, ensure_ascii=False))
           counters={f['name']:collections.Counter() for f in fields}
+          flag_combinations=collections.Counter()
+          selected=[]
           samples=[]
           for index in range(record_count):
               start=header_length + index*record_length
@@ -186,7 +189,16 @@ jobs:
                   counters[field['name']][value] += 1
               if len(samples) < 8:
                   samples.append(row)
-          print('DBF_SAMPLE_ROWS=', json.dumps(samples, ensure_ascii=False))\n          print('DBF_SESSION_FLAG_COMBINATIONS=', json.dumps([{'morning':k[0],'evening':k[1],'weekend':k[2],'rows':v} for k,v in flag_combinations.most_common()], ensure_ascii=False))\n          print('DBF_SELECTED_SECURITIES=', json.dumps(selected, ensure_ascii=False))
+              sid=row.get('SECURITYID','')
+              if sid in {'SBER','GAZP','LKOH','YDEX','T'} and len(selected) < 100:
+                  selected.append({k:row.get(k,'') for k in ('TRADEDATE','TRDSESDATE','BOARDID','SECURITYID','EVENINGSES','WEEKENDSES','MORNINGSES')})
+              flag_combinations[(row.get('MORNINGSES',''),row.get('EVENINGSES',''),row.get('WEEKENDSES',''))] += 1
+          print('DBF_SAMPLE_ROWS=', json.dumps(samples, ensure_ascii=False))
+          print('DBF_SESSION_FLAG_COMBINATIONS=', json.dumps([
+              {'morning':k[0],'evening':k[1],'weekend':k[2],'rows':v}
+              for k,v in flag_combinations.most_common()
+          ], ensure_ascii=False))
+          print('DBF_SELECTED_SECURITIES=', json.dumps(selected, ensure_ascii=False))
           for field, counts in counters.items():
               if any(token in field.upper() for token in ('SESSION','MORNING','EVENING','WEEKEND','TRADE','BOARD','SECURITY')):
                   print('DBF_DISTINCT=', json.dumps({
