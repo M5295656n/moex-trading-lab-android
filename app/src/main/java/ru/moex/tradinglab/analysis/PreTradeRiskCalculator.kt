@@ -40,6 +40,7 @@ data class PreTradeRiskInput(
     val commissionRatePerSide: Double = 0.0005,
     val slippageBasisPointsPerSide: Double = 5.0,
     val futuresSpec: FuturesRiskSpec? = null,
+    val commissionPerContractPerSide: Double? = null,
     val asOfDate: String
 )
 
@@ -75,6 +76,13 @@ object PreTradeRiskCalculator {
             !input.slippageBasisPointsPerSide.isFinite() || input.slippageBasisPointsPerSide < 0.0
         ) return rejected("Комиссия и проскальзывание заданы некорректно")
         if (!input.asOfDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) return rejected("Не указана дата расчёта")
+        if (input.commissionPerContractPerSide != null &&
+            (!input.commissionPerContractPerSide.isFinite() || input.commissionPerContractPerSide < 0.0)
+        ) return rejected("Комиссия за контракт задана некорректно")
+
+        if (input.instrumentType == RiskInstrumentType.EQUITY && input.direction == TradeDirection.SHORT) {
+            return rejected("Короткая позиция по акциям требует отдельной проверки займа и маржинальных требований")
+        }
 
         val isLong = input.direction == TradeDirection.LONG
         val stopIsValid = if (isLong) input.stopPrice < input.entryPrice else input.stopPrice > input.entryPrice
@@ -86,6 +94,7 @@ object PreTradeRiskCalculator {
         } else null
 
         if (spec != null) {
+            if (input.commissionPerContractPerSide == null) return rejected("Не задана комиссия брокера за контракт")
             if (spec.expirationDate < input.asOfDate) return rejected("Срок экспирации контракта уже прошёл")
             if (!isAligned(input.entryPrice, spec.tickSize) ||
                 !isAligned(input.stopPrice, spec.tickSize) ||
@@ -106,9 +115,12 @@ object PreTradeRiskCalculator {
         val entryNotionalPerUnit = executedEntry * multiplier
         val stopNotionalPerUnit = executedStop * multiplier
         val targetNotionalPerUnit = executedTarget * multiplier
-        val entryFeePerUnit = entryNotionalPerUnit * input.commissionRatePerSide
-        val stopFeePerUnit = stopNotionalPerUnit * input.commissionRatePerSide
-        val targetFeePerUnit = targetNotionalPerUnit * input.commissionRatePerSide
+        val entryFeePerUnit = spec?.let { input.commissionPerContractPerSide!! }
+            ?: (entryNotionalPerUnit * input.commissionRatePerSide)
+        val stopFeePerUnit = spec?.let { input.commissionPerContractPerSide!! }
+            ?: (stopNotionalPerUnit * input.commissionRatePerSide)
+        val targetFeePerUnit = spec?.let { input.commissionPerContractPerSide!! }
+            ?: (targetNotionalPerUnit * input.commissionRatePerSide)
 
         val lossPerUnit = kotlin.math.abs(executedEntry - executedStop) * multiplier + entryFeePerUnit + stopFeePerUnit
         val rewardPerUnit = kotlin.math.abs(executedTarget - executedEntry) * multiplier - entryFeePerUnit - targetFeePerUnit
