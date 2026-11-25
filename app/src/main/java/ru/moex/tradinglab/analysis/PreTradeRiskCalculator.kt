@@ -4,6 +4,7 @@ import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.min
 import kotlin.math.round
+import java.time.LocalDate
 
 enum class RiskInstrumentType { EQUITY, FUTURE }
 enum class TradeDirection { LONG, SHORT }
@@ -20,7 +21,7 @@ data class FuturesRiskSpec(
         require(tickSize.isFinite() && tickSize > 0.0)
         require(tickValue.isFinite() && tickValue > 0.0)
         require(initialMarginPerContract.isFinite() && initialMarginPerContract > 0.0)
-        require(expirationDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}")))
+        require(runCatching { LocalDate.parse(expirationDate) }.isSuccess)
         require(source.isNotBlank())
         require(fetchedAtEpochMillis > 0L)
     }
@@ -75,7 +76,8 @@ object PreTradeRiskCalculator {
         if (!input.commissionRatePerSide.isFinite() || input.commissionRatePerSide < 0.0 ||
             !input.slippageBasisPointsPerSide.isFinite() || input.slippageBasisPointsPerSide < 0.0
         ) return rejected("Комиссия и проскальзывание заданы некорректно")
-        if (!input.asOfDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) return rejected("Не указана дата расчёта")
+        val asOfDate = runCatching { LocalDate.parse(input.asOfDate) }.getOrNull()
+            ?: return rejected("Дата расчёта указана некорректно")
         if (input.commissionPerContractPerSide != null &&
             (!input.commissionPerContractPerSide.isFinite() || input.commissionPerContractPerSide < 0.0)
         ) return rejected("Комиссия за контракт задана некорректно")
@@ -95,7 +97,7 @@ object PreTradeRiskCalculator {
 
         if (spec != null) {
             if (input.commissionPerContractPerSide == null) return rejected("Не задана комиссия брокера за контракт")
-            if (spec.expirationDate < input.asOfDate) return rejected("Срок экспирации контракта уже прошёл")
+            if (LocalDate.parse(spec.expirationDate).isBefore(asOfDate)) return rejected("Срок экспирации контракта уже прошёл")
             if (!isAligned(input.entryPrice, spec.tickSize) ||
                 !isAligned(input.stopPrice, spec.tickSize) ||
                 !isAligned(input.targetPrice, spec.tickSize)
