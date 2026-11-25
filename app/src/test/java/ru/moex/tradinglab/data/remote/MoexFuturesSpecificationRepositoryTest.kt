@@ -24,6 +24,7 @@ class MoexFuturesSpecificationRepositoryTest {
                     "MIN_STEP_PRICE" to "1",
                     "END_DATE" to "2026-12-17",
                     "EXP_DATE" to "2026-12-18",
+                    "REFERENCE_DATE" to "2026-11-25",
                     "DOC_DATE" to docDate,
                     "EFFECTIVE_DATE" to "2026-11-25"
                 )
@@ -34,6 +35,7 @@ class MoexFuturesSpecificationRepositoryTest {
                     "TICK" to "1",
                     "TICK_PRICE" to "1",
                     "DEPOSIT" to "15000",
+                    "REFERENCE_DATE" to "2026-11-25",
                     "DOC_DATE" to docDate,
                     "EFFECTIVE_DATE" to "2026-11-25"
                 )
@@ -43,6 +45,7 @@ class MoexFuturesSpecificationRepositoryTest {
                     "TICKER" to "SiZ6",
                     "MARGIN" to "15200",
                     "EXP_DATE" to "2026-12-18",
+                    "REFERENCE_DATE" to "2026-11-25",
                     "DOC_DATE" to docDate,
                     "EFFECTIVE_DATE" to "2026-11-25"
                 )
@@ -169,7 +172,8 @@ class MoexFuturesSpecificationRepositoryTest {
         "MIN_STEP_PRICE" to "1",
         "END_DATE" to "2026-12-17",
         "EXP_DATE" to "2026-12-18",
-        "DOC_DATE" to docDate,
+        "REFERENCE_DATE" to "2026-11-25",
+                    "DOC_DATE" to docDate,
         "EFFECTIVE_DATE" to "2026-11-25"
     )
 
@@ -178,7 +182,8 @@ class MoexFuturesSpecificationRepositoryTest {
         "TICK" to tick,
         "TICK_PRICE" to "1",
         "DEPOSIT" to "15000",
-        "DOC_DATE" to docDate,
+        "REFERENCE_DATE" to "2026-11-25",
+                    "DOC_DATE" to docDate,
         "EFFECTIVE_DATE" to "2026-11-25"
     )
 
@@ -186,7 +191,8 @@ class MoexFuturesSpecificationRepositoryTest {
         "TICKER" to "SiZ6",
         "MARGIN" to "15200",
         "EXP_DATE" to "2026-12-18",
-        "DOC_DATE" to docDate,
+        "REFERENCE_DATE" to "2026-11-25",
+                    "DOC_DATE" to docDate,
         "EFFECTIVE_DATE" to "2026-11-25"
     )
 
@@ -203,13 +209,13 @@ class MoexFuturesSpecificationRepositoryTest {
             calls += endpoint to query
             val values = when (tableName) {
                 "securities" -> listOf(
-                    """{"TICKER":"SiZ6","SHORT_TICKER":"Si-12.26","MIN_STEP":1,"MIN_STEP_PRICE":1,"END_DATE":"2026-12-17","EXP_DATE":"2026-12-18","DOC_DATE":"$docDate","EFFECTIVE_DATE":"2026-11-25"}"""
+                    """{"TICKER":"SiZ6","SHORT_TICKER":"Si-12.26","MIN_STEP":1,"MIN_STEP_PRICE":1,"END_DATE":"2026-12-17","EXP_DATE":"2026-12-18","REFERENCE_DATE":"2026-11-25","DOC_DATE":"$docDate","EFFECTIVE_DATE":"2026-11-25"}"""
                 )
                 "params" -> listOf(
-                    """{"CONTRACT":"SiZ6","TICK":1,"TICK_PRICE":1,"DEPOSIT":15000,"DOC_DATE":"$docDate","EFFECTIVE_DATE":"2026-11-25"}"""
+                    """{"CONTRACT":"SiZ6","TICK":1,"TICK_PRICE":1,"DEPOSIT":15000,"REFERENCE_DATE":"2026-11-25","DOC_DATE":"$docDate","EFFECTIVE_DATE":"2026-11-25"}"""
                 )
                 "risks" -> listOf(
-                    """{"TICKER":"SiZ6","MARGIN":15200,"EXP_DATE":"2026-12-18","DOC_DATE":"$docDate","EFFECTIVE_DATE":"2026-11-25"}"""
+                    """{"TICKER":"SiZ6","MARGIN":15200,"EXP_DATE":"2026-12-18","REFERENCE_DATE":"2026-11-25","DOC_DATE":"$docDate","EFFECTIVE_DATE":"2026-11-25"}"""
                 )
                 else -> emptyList()
             }
