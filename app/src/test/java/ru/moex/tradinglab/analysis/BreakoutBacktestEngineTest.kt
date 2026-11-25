@@ -42,6 +42,21 @@ class BreakoutBacktestEngineTest {
     }
 
     @Test
+    fun positionSizingDoesNotCountEntrySlippageTwice() {
+        val quantity = BreakoutBacktestEngine.calculateQuantity(
+            cash = 1_000.0,
+            entryPrice = 100.0,
+            stopDistance = 9.91,
+            config = BacktestConfig(
+                commissionRatePerSide = 0.0,
+                slippageBasisPointsPerSide = 5.0
+            )
+        )
+
+        assertEquals(1, quantity)
+    }
+
+    @Test
     fun calculatesMetricsFromClosedTrades() {
         val trades = listOf(
             BacktestTrade("a", "b", 100.0, 110.0, 1, 10.0, 1.0, 9.0, BacktestExitReason.TAKE_PROFIT),
