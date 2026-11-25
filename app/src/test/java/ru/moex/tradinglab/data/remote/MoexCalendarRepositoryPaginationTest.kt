@@ -42,7 +42,8 @@ class MoexCalendarRepositoryPaginationTest {
         )
     }
 
-    @Test fun readsEveryPageAndConfirmsCompletionAfterShortPage() = runBlocking {
+    @Test
+    fun readsEveryPageAndConfirmsCompletionAfterShortPage(): Unit = runBlocking {
         val all = (0 until 101).map(::sessionRow)
         val client = FakeClient { start -> all.drop(start).take(100) }
         val result = MoexCalendarRepository(client).loadSessionPeriods(
@@ -57,7 +58,8 @@ class MoexCalendarRepositoryPaginationTest {
         assertEquals(listOf(0, 100, 101), client.requestedStarts)
     }
 
-    @Test fun exactPageBoundaryRequiresAnEmptyConfirmationPage() = runBlocking {
+    @Test
+    fun exactPageBoundaryRequiresAnEmptyConfirmationPage(): Unit = runBlocking {
         val all = (0 until 100).map(::sessionRow)
         val client = FakeClient { start -> all.drop(start).take(100) }
         val result = MoexCalendarRepository(client).loadSessionPeriods(
@@ -70,7 +72,8 @@ class MoexCalendarRepositoryPaginationTest {
         assertEquals(listOf(0, 100), client.requestedStarts)
     }
 
-    @Test fun repeatedPageFailsInsteadOfClaimingCompleteSchedule() = runBlocking {
+    @Test
+    fun repeatedPageFailsInsteadOfClaimingCompleteSchedule(): Unit = runBlocking {
         val page = (0 until 100).map(::sessionRow)
         val client = FakeClient { page }
         assertThrows(MoexIssException.InvalidResponse::class.java) {
@@ -84,7 +87,8 @@ class MoexCalendarRepositoryPaginationTest {
         }
     }
 
-    @Test fun malformedScheduleRowFailsClosed() = runBlocking {
+    @Test
+    fun malformedScheduleRowFailsClosed(): Unit = runBlocking {
         val malformed = mapOf(
             "tradedate" to JsonPrimitive("2026-01-01"),
             "type" to JsonPrimitive("main")
