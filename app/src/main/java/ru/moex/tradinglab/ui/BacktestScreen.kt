@@ -53,7 +53,7 @@ fun BacktestScreen(
     var from by remember { mutableStateOf("2025-01-01") }
     var till by remember { mutableStateOf("") }
     var capital by remember { mutableStateOf("1000") }
-    var riskPercent by remember { mutableStateOf("1") }
+    var riskPercent by remember { mutableStateOf("2") }
     var isRunning by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<BacktestRunResult?>(null) }
     var inputError by remember { mutableStateOf<String?>(null) }
@@ -190,8 +190,10 @@ fun BacktestScreen(
                         val endDate = runCatching { LocalDate.parse(till) }.getOrNull()
                         if (instrument.market != "SHARES") {
                             inputError = "Этот тест пока поддерживает только акции."
-                        } else if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
-                            inputError = "Укажите корректный диапазон дат: конец не раньше начала."
+                        } else if (startDate == null || endDate == null || endDate.isBefore(startDate) ||
+                            endDate.isAfter(LocalDate.now())
+                        ) {
+                            inputError = "Укажите корректный диапазон дат: конец не раньше начала и не позже сегодняшнего дня."
                         } else {
                             inputError = null
                             result = null
