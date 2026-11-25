@@ -111,8 +111,34 @@ interface MarketDataDao {
         till: String
     ): List<CandleEntity>
 
+    @Query("""
+        SELECT * FROM history_coverage
+        WHERE instrumentId = :instrumentId AND intervalMinutes = :intervalMinutes
+          AND requestedFrom IS NOT NULL AND requestedTill IS NOT NULL
+          AND requestedFrom <= :from AND requestedTill >= :till
+        ORDER BY fetchedAtEpochMillis DESC
+        LIMIT 1
+    """)
+    suspend fun getCoverageForRange(
+        instrumentId: String,
+        intervalMinutes: Int,
+        from: String,
+        till: String
+    ): HistoryCoverageEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertCoverage(coverage: HistoryCoverageEntity)
+
+    @Query("""
+        UPDATE history_coverage
+        SET gapCount = :gapCount, gapsJson = :gapsJson
+        WHERE coverageId = :coverageId
+    """)
+    suspend fun updateCoverageQuality(
+        coverageId: String,
+        gapCount: Int,
+        gapsJson: String
+    ): Int
 
     @Query("""
         SELECT * FROM history_coverage
