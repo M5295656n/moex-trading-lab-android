@@ -9,7 +9,7 @@ import org.junit.Test
 
 class MoexIssDataRepositoryTest {
     @Test
-    fun loadsAllPagesUntilShortPageAndSortsCandles() = runBlocking {
+    fun loadsAllPagesUntilEmptyPageAndSortsCandles() = runBlocking {
         val client = FakeIssClient(
             pageSize = 2,
             pages = listOf(
@@ -31,6 +31,27 @@ class MoexIssDataRepositoryTest {
         assertEquals(3, result.pageCount)
         assertEquals(HistoryCompleteness.COMPLETE, result.completeness)
         assertTrue(result.isComplete)
+    }
+
+    @Test
+    fun catalogUsesActualRowCountWhenIssCapsRequestedPageSize() = runBlocking {
+        val instruments = (0 until 250).map { index ->
+            """{"SECID":"SEC$index","BOARDID":"TQBR","SHORTNAME":"Share $index"}"""
+        }
+        val client = FakeIssClient(
+            pageSize = 100,
+            pages = instruments.chunked(100)
+        )
+
+        val result = MoexIssDataRepository(client).loadCatalog(
+            market = MoexMarket.SHARES,
+            pageSize = 500
+        )
+
+        assertEquals(listOf(0, 100, 200, 250), client.requestedStarts)
+        assertEquals(250, result.instruments.size)
+        assertEquals(4, result.pageCount)
+        assertEquals(HistoryCompleteness.COMPLETE, result.completeness)
     }
 
     @Test
