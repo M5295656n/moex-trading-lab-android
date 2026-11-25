@@ -80,7 +80,7 @@ jobs:
             body="/tmp/archive-index-$(echo "$params" | md5sum | cut -c1-8).json"
             meta="$(curl --insecure --fail --silent --show-error --location --max-time 45 -o "$body" -w '%{http_code}|%{content_type}|%{size_download}' "$base?$params")"
             echo "ARCHIVE_INDEX_PARAMS=$params RESULT=$meta"
-            jq -c '.files as $f | {rows: ($f.data|length), min_date: ([$f.data[][2]]|min), max_date: ([$f.data[][3]]|max), dates: ([$f.data[][2]]|unique), matching_urls: [$f.data[] | select(.[0]=="securities_listing_latest" and .[1]=="csv") | {date:.[2], url:.[6]}]' "$body"
+            jq -c '.files as $f | {rows: ($f.data|length), min_date: ([$f.data[][2]]|min), max_date: ([$f.data[][3]]|max), dates: ([$f.data[][2]]|unique), matching_urls: [$f.data[] | select(.[0]=="securities_listing_latest" and .[1]=="csv") | {date:.[2], url:.[6]}]}' "$body"
           done
           curl --insecure --fail --silent --show-error --location --max-time 90 \
             'https://iss.moex.com/iss/archives/files/securities_listing_latest.json?from=2026-10-01&till=2026-11-25&start=0&limit=1000&iss.meta=off' \
