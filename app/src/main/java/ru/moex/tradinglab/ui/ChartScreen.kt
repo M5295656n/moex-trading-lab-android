@@ -33,6 +33,7 @@ import ru.moex.tradinglab.data.local.MarketDataDao
 import ru.moex.tradinglab.data.local.MarketInstrumentEntity
 import ru.moex.tradinglab.data.remote.IssInstrument
 import ru.moex.tradinglab.data.remote.MoexMarket
+import ru.moex.tradinglab.data.remote.MoexFuturesSpecificationRepository
 import ru.moex.tradinglab.data.sync.MoexMarketDataSync
 import java.lang.reflect.Type
 import java.text.SimpleDateFormat
@@ -43,6 +44,7 @@ import java.util.Locale
 fun ChartScreen(
     dao: MarketDataDao,
     sync: MoexMarketDataSync,
+    futuresSpecifications: MoexFuturesSpecificationRepository,
     onOpenDiagnostics: () -> Unit
 ) {
     val instruments by dao.observeInstruments().collectAsState(initial = emptyList())
@@ -229,6 +231,7 @@ fun ChartScreen(
 
                         PreTradeRiskCard(
                             instrument = instrument,
+                            futuresSpecificationRepository = futuresSpecifications,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
