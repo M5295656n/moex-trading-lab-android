@@ -25,8 +25,8 @@ sealed interface BacktestHistoryResult {
  */
 class BacktestHistoryRepository(
     private val dao: MarketDataDao
-) {
-    suspend fun load(
+) : BacktestHistorySource {
+    override suspend fun load(
         instrumentId: String,
         intervalMinutes: Int,
         from: String,
