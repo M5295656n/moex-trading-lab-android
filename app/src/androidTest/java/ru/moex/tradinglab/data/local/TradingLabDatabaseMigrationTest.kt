@@ -45,7 +45,8 @@ class TradingLabDatabaseMigrationTest {
         database = Room.databaseBuilder(context, TradingLabDatabase::class.java, databaseName)
             .addMigrations(
                 TradingLabDatabase.MIGRATION_1_2,
-                TradingLabDatabase.MIGRATION_2_3
+                TradingLabDatabase.MIGRATION_2_3,
+                TradingLabDatabase.MIGRATION_3_4
             )
             .build()
     }
@@ -102,6 +103,58 @@ class TradingLabDatabaseMigrationTest {
         assertEquals("COMPLETE", catalogRows.getString(2))
         catalogRows.close()
 
-        assertEquals(3, database.openHelper.readableDatabase.version)
+        database.securitiesListingDao().saveSnapshot(
+            snapshot = SecuritiesListingSnapshotEntity(
+                snapshotId = "snapshot-sha",
+                tradeDate = "2026-11-25",
+                source = "MOEX ISS",
+                sourceUrl = "https://iss.moex.com/file/stock_boardsecid/SL.ZIP",
+                archiveMember = "SL251126.dbf",
+                sha256 = "snapshot-sha",
+                fetchedAtEpochMillis = 999,
+                declaredRecordCount = 1,
+                activeRecordCount = 1,
+                storedEntryCount = 1,
+                filteredOutEntryCount = 0,
+                deletedRecordCount = 0,
+                duplicateRecordCount = 0,
+                unknownFlagCount = 0,
+                status = "COMPLETE"
+            ),
+            entries = listOf(
+                SecuritiesListingEntryEntity(
+                    snapshotId = "snapshot-sha",
+                    tradeDate = "2026-11-25",
+                    tradeSessionDate = "2026-11-25",
+                    boardId = "TQBR",
+                    secId = "SBER",
+                    morningSession = true,
+                    eveningSession = true,
+                    weekendSession = false
+                )
+            )
+        )
+        val snapshotRows = database.openHelper.readableDatabase.query(
+            "SELECT storedEntryCount, status FROM securities_listing_snapshots WHERE snapshotId = 'snapshot-sha'"
+        )
+        assertEquals(1, snapshotRows.count)
+        snapshotRows.moveToFirst()
+        assertEquals(1, snapshotRows.getInt(0))
+        assertEquals("COMPLETE", snapshotRows.getString(1))
+        snapshotRows.close()
+
+        val listingRows = database.openHelper.readableDatabase.query(
+            "SELECT boardId, secId, morningSession, eveningSession, weekendSession FROM securities_listing_entries"
+        )
+        assertEquals(1, listingRows.count)
+        listingRows.moveToFirst()
+        assertEquals("TQBR", listingRows.getString(0))
+        assertEquals("SBER", listingRows.getString(1))
+        assertEquals(1, listingRows.getInt(2))
+        assertEquals(1, listingRows.getInt(3))
+        assertEquals(0, listingRows.getInt(4))
+        listingRows.close()
+
+        assertEquals(4, database.openHelper.readableDatabase.version)
     }
 }
