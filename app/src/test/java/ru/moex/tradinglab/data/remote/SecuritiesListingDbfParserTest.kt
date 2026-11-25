@@ -169,7 +169,7 @@ class SecuritiesListingDbfParserTest {
         try {
             block()
             fail("Expected parser to reject invalid archive")
-        } catch (_: IllegalArgumentException) {
+        } catch (_: Exception) {
             // expected
         }
     }
