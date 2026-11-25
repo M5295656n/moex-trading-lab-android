@@ -90,6 +90,21 @@ class MoexFuturesSpecificationRepositoryTest {
     }
 
     @Test
+    fun rejectsReferenceDateDifferentFromRequestedTradingDate() {
+        val result = FuturesSpecificationMapper.map(
+            secId = "SiZ6",
+            asOfDate = asOf,
+            securitiesRows = listOf(securityRow()),
+            paramsRows = listOf(paramsRow().toMutableMap().apply {
+                this["REFERENCE_DATE"] = "2026-11-24"
+            }),
+            risksRows = listOf(riskRow())
+        )
+        assertTrue(result is FuturesSpecificationLoadResult.Rejected)
+        assertTrue((result as FuturesSpecificationLoadResult.Rejected).reason.contains("вместо запрошенной даты"))
+    }
+
+    @Test
     fun rejectsFutureEffectiveDate() {
         val result = FuturesSpecificationMapper.map(
             secId = "SiZ6",
