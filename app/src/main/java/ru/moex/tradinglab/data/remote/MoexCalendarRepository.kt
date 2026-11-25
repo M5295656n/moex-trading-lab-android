@@ -25,20 +25,23 @@ data class MoexSessionPeriod(
 /**
  * Read-only adapter for MOEX's machine-readable calendar.
  * Authorization failures are propagated; callers must preserve UNKNOWN status.
+ *
+ * Calendar rows are paginated explicitly. A single response is never assumed
+ * to represent the complete schedule.
  */
-class MoexCalendarRepository(private val client: MoexIssClient) {
+class MoexCalendarRepository(private val client: MoexIssTableClient) {
     suspend fun loadTradingDays(
         market: CalendarMarket,
         from: LocalDate,
         till: LocalDate
     ): List<MoexTradingDay> {
         require(!till.isBefore(from)) { "till must not be before from" }
-        val table = client.getTable(
-            "calendars/${market.path}",
-            mapOf("from" to from.toString(), "till" to till.toString()),
+        val rows = loadAllRows(
+            endpoint = "calendars/${market.path}",
+            query = mapOf("from" to from.toString(), "till" to till.toString()),
             tableName = "off_days"
         )
-        return table.rows.mapNotNull { row ->
+        return rows.mapNotNull { row ->
             val date = row.string("tradedate")?.let {
                 runCatching { LocalDate.parse(it.take(10)) }.getOrNull()
             } ?: return@mapNotNull null
@@ -67,31 +70,85 @@ class MoexCalendarRepository(private val client: MoexIssClient) {
             secId?.let { put("secid", it) }
             boardId?.let { put("boardid", it) }
         }
-        val table = client.getTable(
-            "calendars/${market.path}/session",
-            query,
+        val rows = loadAllRows(
+            endpoint = "calendars/${market.path}/session",
+            query = query,
             tableName = "session_schedule"
         )
-        return table.rows.mapNotNull { row ->
+        return rows.map { row ->
             val values = row.mapValues { (_, value) ->
                 value?.takeUnless(JsonElement::isJsonNull)?.asString
             }
-            MoexCalendarRowParser.parse(values, market)?.let { parsed ->
-                MoexSessionPeriod(
-                    tradeDate = parsed.tradeDate,
-                    session = values["tradingsession"]?.toIntOrNull(),
-                    boardId = values["boardid"]?.takeUnless { it == "-" || it.isBlank() },
-                    secId = values["secid"]?.takeUnless { it == "-" || it.isBlank() },
-                    type = parsed.type,
-                    startsAt = parsed.startsAt,
-                    endsAt = parsed.endsAt
+            val parsed = MoexCalendarRowParser.parse(values, market)
+                ?: throw MoexIssException.InvalidResponse(
+                    "Invalid row in MOEX session_schedule; completeness cannot be confirmed"
+                )
+            MoexSessionPeriod(
+                tradeDate = parsed.tradeDate,
+                session = values["tradingsession"]?.toIntOrNull(),
+                boardId = values["boardid"]?.takeUnless { it == "-" || it.isBlank() },
+                secId = values["secid"]?.takeUnless { it == "-" || it.isBlank() },
+                type = parsed.type,
+                startsAt = parsed.startsAt,
+                endsAt = parsed.endsAt
+            )
+        }.sortedBy(MoexSessionPeriod::startsAt)
+    }
+
+    /**
+     * Uses the ISS start/limit paging contract. A repeated page or exhausted
+     * safety bound is an error, never a silently truncated successful result.
+     */
+    private suspend fun loadAllRows(
+        endpoint: String,
+        query: Map<String, String>,
+        tableName: String
+    ): List<Map<String, JsonElement?>> {
+        val allRows = mutableListOf<Map<String, JsonElement?>>()
+        val seenPages = mutableSetOf<Int>()
+        var start = 0
+
+        repeat(MAX_PAGES) {
+            val page = client.getTable(
+                endpoint = endpoint,
+                query = query + mapOf(
+                    "start" to start.toString(),
+                    "limit" to PAGE_SIZE.toString()
+                ),
+                tableName = tableName
+            ).rows
+
+            if (page.isEmpty()) return allRows
+            if (page.size > PAGE_SIZE) {
+                throw MoexIssException.InvalidResponse(
+                    "MOEX calendar ignored the requested page limit"
                 )
             }
-        }.sortedBy(MoexSessionPeriod::startsAt)
+
+            val fingerprint = page.hashCode()
+            if (!seenPages.add(fingerprint)) {
+                throw MoexIssException.InvalidResponse(
+                    "MOEX calendar returned a repeated page; completeness is unknown"
+                )
+            }
+
+            allRows += page
+            start += page.size
+            if (page.size < PAGE_SIZE) return allRows
+        }
+
+        throw MoexIssException.InvalidResponse(
+            "MOEX calendar pagination exceeded $MAX_PAGES pages; completeness is unknown"
+        )
     }
 
     private fun Map<String, JsonElement?>.string(key: String): String? =
         this[key]?.takeUnless(JsonElement::isJsonNull)?.asString
+
+    private companion object {
+        const val PAGE_SIZE = 100
+        const val MAX_PAGES = 1_000
+    }
 }
 
 /** Parser shared by the network adapter and deterministic unit tests. */
