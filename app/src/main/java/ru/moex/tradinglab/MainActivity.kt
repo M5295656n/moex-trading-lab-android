@@ -22,20 +22,25 @@ import ru.moex.tradinglab.data.local.MarketDataStorage
 import ru.moex.tradinglab.data.local.TradingLabDatabase
 import ru.moex.tradinglab.data.remote.MoexIssClient
 import ru.moex.tradinglab.data.remote.MoexIssDataRepository
+import ru.moex.tradinglab.data.remote.MoexCalendarRepository
 import ru.moex.tradinglab.data.remote.MoexFuturesSpecificationRepository
 import ru.moex.tradinglab.data.remote.MoexPublicFuturesCatalogRepository
 import ru.moex.tradinglab.data.sync.MoexMarketDataSync
+import ru.moex.tradinglab.ui.BacktestScreen
 import ru.moex.tradinglab.ui.ChartScreen
 import ru.moex.tradinglab.ui.MarketDataDiagnosticsScreen
 import ru.moex.tradinglab.ui.theme.MoexTradingLabTheme
 
 private enum class MainTab(val title: String) {
     CHART("График"),
+    BACKTEST("Тест"),
     DATA("Данные")
 }
 
 class MainActivity : ComponentActivity() {
     private val moexIssClient by lazy { MoexIssClient() }
+
+    private val calendarRepository by lazy { MoexCalendarRepository(moexIssClient) }
 
     private val futuresSpecifications by lazy {
         MoexFuturesSpecificationRepository(moexIssClient)
@@ -72,6 +77,7 @@ class MainActivity : ComponentActivity() {
                 TradingLabRoot(
                     database = database,
                     sync = marketDataSync,
+                    calendar = calendarRepository,
                     futuresSpecifications = futuresSpecifications,
                     publicFuturesCatalog = publicFuturesCatalog
                 )
@@ -84,6 +90,7 @@ class MainActivity : ComponentActivity() {
 private fun TradingLabRoot(
     database: TradingLabDatabase,
     sync: MoexMarketDataSync,
+    calendar: MoexCalendarRepository,
     futuresSpecifications: MoexFuturesSpecificationRepository,
     publicFuturesCatalog: MoexPublicFuturesCatalogRepository
 ) {
@@ -99,7 +106,15 @@ private fun TradingLabRoot(
                         NavigationBarItem(
                             selected = selectedTab == index,
                             onClick = { selectedTab = index },
-                            icon = { Text(if (tab == MainTab.CHART) "▥" else "☷") },
+                            icon = {
+                                Text(
+                                    when (tab) {
+                                        MainTab.CHART -> "▥"
+                                        MainTab.BACKTEST -> "◷"
+                                        MainTab.DATA -> "☷"
+                                    }
+                                )
+                            },
                             label = { Text(tab.title) }
                         )
                     }
@@ -120,6 +135,11 @@ private fun TradingLabRoot(
                             futuresSpecifications = futuresSpecifications,
                             publicFuturesCatalog = publicFuturesCatalog,
                             onOpenDiagnostics = { selectedTab = MainTab.DATA.ordinal }
+                        )
+                        MainTab.BACKTEST -> BacktestScreen(
+                            dao = dao,
+                            sync = sync,
+                            calendar = calendar
                         )
                         MainTab.DATA -> MarketDataDiagnosticsScreen(
                             dao = dao,

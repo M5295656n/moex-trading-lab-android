@@ -26,7 +26,8 @@ object BacktestHistoryGate {
         }
         if (coverage.source != "MOEX ISS") return "Источник истории не подтверждён как MOEX ISS"
         if (coverage.requestedFrom.isNullOrBlank() || coverage.requestedTill.isNullOrBlank() ||
-            coverage.requestedFrom > from || coverage.requestedTill < till
+            coverage.requestedFrom.take(10) > from.take(10) ||
+            coverage.requestedTill.take(10) < till.take(10)
         ) return "Запись покрытия не охватывает весь выбранный диапазон"
         if (coverage.paginationStatus != "COMPLETE") {
             return "Загрузка истории не завершена: ${coverage.paginationStatus}"

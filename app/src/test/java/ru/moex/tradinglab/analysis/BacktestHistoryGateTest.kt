@@ -88,6 +88,40 @@ class BacktestHistoryGateTest {
         assertEquals("Свечи не расположены в строгом хронологическом порядке", reason(candles = unsorted))
     }
 
+
+    @Test fun acceptsDateOnlyCoverageForFullDayTimestampRange() {
+        val dateOnlyCoverage = coverage().copy(
+            requestedFrom = "2026-01-01",
+            requestedTill = "2026-01-02"
+        )
+        assertNull(
+            BacktestHistoryGate.rejectionReason(
+                dateOnlyCoverage,
+                candles(),
+                instrumentId,
+                24,
+                "2026-01-01 00:00:00",
+                "2026-01-02 23:59:59"
+            )
+        )
+    }
+
+    @Test fun rejectsDateOnlyCoverageThatEndsBeforeRequestedDay() {
+        val tooShort = coverage().copy(
+            requestedFrom = "2026-01-01",
+            requestedTill = "2026-01-01"
+        )
+        val reason = BacktestHistoryGate.rejectionReason(
+            tooShort,
+            candles(),
+            instrumentId,
+            24,
+            "2026-01-01 00:00:00",
+            "2026-01-02 23:59:59"
+        )
+        assertEquals("Запись покрытия не охватывает весь выбранный диапазон", reason)
+    }
+
     @Test fun rejectsCoverageForDifferentSource() {
         assertEquals(
             "Источник истории не подтверждён как MOEX ISS",

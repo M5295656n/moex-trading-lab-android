@@ -115,7 +115,8 @@ interface MarketDataDao {
         SELECT * FROM history_coverage
         WHERE instrumentId = :instrumentId AND intervalMinutes = :intervalMinutes
           AND requestedFrom IS NOT NULL AND requestedTill IS NOT NULL
-          AND requestedFrom <= :from AND requestedTill >= :till
+          AND substr(requestedFrom, 1, 10) <= substr(:from, 1, 10)
+          AND substr(requestedTill, 1, 10) >= substr(:till, 1, 10)
         ORDER BY fetchedAtEpochMillis DESC
         LIMIT 1
     """)
