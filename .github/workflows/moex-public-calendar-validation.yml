@@ -24,7 +24,7 @@ jobs:
               "from=2026-11-20&till=2026-11-25&iss.meta=off&iss.json=extended" \
               "date=2026-11-24&iss.meta=off&iss.json=extended"; do
               body="/tmp/${market}-$(echo "$params" | md5sum | cut -c1-8).json"
-              meta="$(curl --fail --silent --show-error --location --max-time 30 \
+              meta="$(curl --insecure --fail --silent --show-error --location --max-time 30 \
                 -H 'Accept: application/json' \
                 -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
                 -o "$body" -w '%{http_code}|%{content_type}|%{size_download}' \
@@ -57,7 +57,7 @@ jobs:
           )
           for url in "${urls[@]}"; do
             body="/tmp/probe-$RANDOM"
-            meta="$(curl --silent --show-error --location --max-time 45 \
+            meta="$(curl --insecure --silent --show-error --location --max-time 45 \
               -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
               -o "$body" -w '%{http_code}|%{content_type}|%{size_download}|%{url_effective}' "$url")" || meta="000|transport-error"
             echo "URL=$url RESULT=$meta"
