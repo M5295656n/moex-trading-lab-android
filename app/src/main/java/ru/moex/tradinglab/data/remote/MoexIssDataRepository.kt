@@ -96,9 +96,9 @@ class MoexIssDataRepository(
         var pages = 0
         var fetchedAt = System.currentTimeMillis()
         var completeness = HistoryCompleteness.PAGE_LIMIT_REACHED
+        var start = 0
 
         while (pages < maxPages) {
-            val start = pages * pageSize
             starts += start
             val table = client.getTable(
                 market.catalogEndpoint,
@@ -106,6 +106,11 @@ class MoexIssDataRepository(
             )
             fetchedAt = table.fetchedAtEpochMillis
             pages++
+            if (table.rows.isEmpty()) {
+                completeness = HistoryCompleteness.COMPLETE
+                break
+            }
+            start += table.rows.size
 
             var addedOnPage = 0
             table.rows.forEach { row ->
@@ -120,10 +125,6 @@ class MoexIssDataRepository(
                 }
             }
 
-            if (table.rows.size < pageSize) {
-                completeness = HistoryCompleteness.COMPLETE
-                break
-            }
             if (addedOnPage == 0) {
                 completeness = HistoryCompleteness.PAGINATION_STALLED
                 break
@@ -144,11 +145,11 @@ class MoexIssDataRepository(
     }
 
     /**
-     * Loads pages from start=0 until ISS returns a short/empty page, or until
-     * maxPages is reached. A page with no new candle timestamps is reported
-     * as stalled rather than silently marked complete. Repeated timestamps
-     * replace earlier row values, while the unique timestamp count drives
-     * the pagination-stall guard.
+     * Loads pages from start=0 until ISS returns an empty page, or until
+     * maxPages is reached. The next offset advances by the actual number of
+     * rows returned, not the requested limit, because ISS may cap page size.
+     * A non-empty page with no new candle timestamps is reported as stalled.
+     * Repeated timestamps replace earlier row values.
      */
     suspend fun loadCandles(
         endpoint: String,
@@ -166,9 +167,9 @@ class MoexIssDataRepository(
         var pages = 0
         var completeness = HistoryCompleteness.PAGE_LIMIT_REACHED
         var fetchedAt = System.currentTimeMillis()
+        var start = 0
 
         while (pages < maxPages) {
-            val start = pages * pageSize
             starts += start
             val table = client.getTable(
                 endpoint,
@@ -176,6 +177,11 @@ class MoexIssDataRepository(
             )
             fetchedAt = table.fetchedAtEpochMillis
             pages++
+            if (table.rows.isEmpty()) {
+                completeness = HistoryCompleteness.COMPLETE
+                break
+            }
+            start += table.rows.size
 
             var addedOnPage = 0
             table.rows.forEach { row ->
@@ -188,10 +194,6 @@ class MoexIssDataRepository(
                 }
             }
 
-            if (table.rows.size < pageSize) {
-                completeness = HistoryCompleteness.COMPLETE
-                break
-            }
             if (addedOnPage == 0) {
                 completeness = HistoryCompleteness.PAGINATION_STALLED
                 break
