@@ -226,6 +226,11 @@ fun ChartScreen(
                             candles = candles,
                             modifier = Modifier.fillMaxWidth()
                         )
+
+                        PreTradeRiskCard(
+                            instrument = instrument,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
             } ?: run {
