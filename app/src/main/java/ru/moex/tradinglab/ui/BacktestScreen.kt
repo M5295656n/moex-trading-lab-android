@@ -31,14 +31,25 @@ import ru.moex.tradinglab.analysis.BacktestRunner
 import ru.moex.tradinglab.data.local.BacktestHistoryRepository
 import ru.moex.tradinglab.data.local.MarketDataDao
 import ru.moex.tradinglab.data.local.MarketInstrumentEntity
+import ru.moex.tradinglab.data.remote.IssInstrument
+import ru.moex.tradinglab.data.remote.MoexMarket
+import ru.moex.tradinglab.data.remote.MoexCalendarRepository
+import ru.moex.tradinglab.data.sync.MoexDailyHistoryCoverageVerifier
+import ru.moex.tradinglab.data.sync.MoexMarketDataSync
+import ru.moex.tradinglab.data.sync.HistoryVerificationResult
+import java.time.LocalDate
 import java.util.Locale
 
 @Composable
-fun BacktestScreen(dao: MarketDataDao) {
+fun BacktestScreen(
+    dao: MarketDataDao,
+    sync: MoexMarketDataSync,
+    calendar: MoexCalendarRepository
+) {
+    val verifier = remember(dao, calendar) { MoexDailyHistoryCoverageVerifier(dao, calendar) }
     val instruments by dao.observeInstruments().collectAsState(initial = emptyList())
     var search by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf<MarketInstrumentEntity?>(null) }
-    var interval by remember { mutableStateOf(24) }
     var from by remember { mutableStateOf("2025-01-01") }
     var till by remember { mutableStateOf("") }
     var capital by remember { mutableStateOf("1000") }
@@ -109,11 +120,15 @@ fun BacktestScreen(dao: MarketDataDao) {
         }
         item {
             Text("Таймфрейм")
+            Text(
+                "Пока доступен только дневной тест акций: для него реализована проверка расписания MOEX. Внутридневные интервалы и фьючерсы не запускаются, пока их календарные правила не подтверждены.",
+                style = MaterialTheme.typography.bodySmall
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(24, 60, 10, 1).forEach { value ->
                     OutlinedButton(
-                        onClick = { interval = value; result = null },
-                        enabled = !isRunning
+                        onClick = { result = null },
+                        enabled = !isRunning && value == 24
                     ) {
                         Text(if (value == 24) "1д" else "${value}м")
                     }
@@ -171,27 +186,80 @@ fun BacktestScreen(dao: MarketDataDao) {
                     ) {
                         inputError = "Проверьте капитал и риск: капитал больше 0, риск от 0 до 100%"
                     } else {
-                        inputError = null
-                        result = null
-                        isRunning = true
-                        scope.launch {
-                            try {
-                                val runner = BacktestRunner(BacktestHistoryRepository(dao))
-                                result = runner.runBreakout(
-                                    instrumentId = instrument.instrumentId,
-                                    intervalMinutes = interval,
-                                    from = "$from 00:00:00",
-                                    till = "$till 23:59:59",
-                                    config = BacktestConfig(
-                                        initialCapital = startCapital,
-                                        lotSize = (instrument.lotSize ?: 1.0).toInt().coerceAtLeast(1),
-                                        riskFraction = risk / 100.0
+                        val startDate = runCatching { LocalDate.parse(from) }.getOrNull()
+                        val endDate = runCatching { LocalDate.parse(till) }.getOrNull()
+                        if (instrument.market != "SHARES") {
+                            inputError = "Этот тест пока поддерживает только акции."
+                        } else if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+                            inputError = "Укажите корректный диапазон дат: конец не раньше начала."
+                        } else {
+                            inputError = null
+                            result = null
+                            isRunning = true
+                            scope.launch {
+                                try {
+                                    val issInstrument = IssInstrument(
+                                        secId = instrument.secId,
+                                        name = instrument.name,
+                                        shortName = instrument.shortName,
+                                        isin = instrument.isin,
+                                        boardId = instrument.boardId,
+                                        lotSize = instrument.lotSize,
+                                        currency = instrument.currency,
+                                        market = MoexMarket.SHARES,
+                                        source = instrument.source,
+                                        rawFields = emptyMap()
                                     )
-                                )
-                            } catch (error: Exception) {
-                                inputError = "Не удалось выполнить тест: ${error.message ?: error.javaClass.simpleName}"
-                            } finally {
-                                isRunning = false
+                                    val history = sync.syncInstrumentHistory(
+                                        instrument = issInstrument,
+                                        intervalMinutes = 24,
+                                        from = startDate.toString(),
+                                        till = endDate.toString()
+                                    )
+                                    if (!history.isComplete) {
+                                        result = BacktestRunResult.Rejected(
+                                            "MOEX не подтвердила полноту загрузки истории (${history.completeness}). Тест не выполнен."
+                                        )
+                                    } else {
+                                        when (val verification = verifier.verify(
+                                            instrumentId = instrument.instrumentId,
+                                            intervalMinutes = 24,
+                                            from = startDate.toString(),
+                                            till = endDate.toString()
+                                        )) {
+                                            is HistoryVerificationResult.Verified -> {
+                                                val runner = BacktestRunner(BacktestHistoryRepository(dao))
+                                                result = runner.runBreakout(
+                                                    instrumentId = instrument.instrumentId,
+                                                    intervalMinutes = 24,
+                                                    from = "${startDate} 00:00:00",
+                                                    till = "${endDate} 23:59:59",
+                                                    config = BacktestConfig(
+                                                        initialCapital = startCapital,
+                                                        lotSize = (instrument.lotSize ?: 1.0).toInt().coerceAtLeast(1),
+                                                        riskFraction = risk / 100.0
+                                                    )
+                                                )
+                                            }
+                                            is HistoryVerificationResult.GapsDetected -> {
+                                                result = BacktestRunResult.Rejected(
+                                                    "В истории найдены пропуски: ${verification.missingStarts.size}. Тест заблокирован."
+                                                )
+                                            }
+                                            is HistoryVerificationResult.Unknown -> {
+                                                result = BacktestRunResult.Rejected(
+                                                    "Полноту истории подтвердить не удалось: ${verification.reason}"
+                                                )
+                                            }
+                                        }
+                                    }
+                                } catch (error: Exception) {
+                                    result = BacktestRunResult.Rejected(
+                                        "Не удалось выполнить тест: ${error.message ?: error.javaClass.simpleName}"
+                                    )
+                                } finally {
+                                    isRunning = false
+                                }
                             }
                         }
                     }
