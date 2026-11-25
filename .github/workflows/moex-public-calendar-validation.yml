@@ -62,6 +62,10 @@ jobs:
               -o "$body" -w '%{http_code}|%{content_type}|%{size_download}|%{url_effective}' "$url")" || meta="000|transport-error"
             echo "URL=$url RESULT=$meta"
             echo "PREFIX=$(head -c 160 "$body" | tr '\n' ' ')"
+            if [[ "$url" == *"securities_listing_latest.json"* ]]; then
+              echo "ARCHIVE_INDEX_MATCHING_ROWS"
+              jq -c '.files | {columns, total_rows: (.data | length), listing_rows: [.data[] | select((.[0] // "") | test("securities_listing|stock_boardsecid"; "i"))]}' "$body"
+            fi
             if file "$body" | grep -qi 'Zip archive'; then
               unzip -t "$body" | tail -2
             fi
