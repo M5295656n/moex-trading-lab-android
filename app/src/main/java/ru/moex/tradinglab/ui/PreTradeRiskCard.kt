@@ -27,7 +27,6 @@ import ru.moex.tradinglab.analysis.RiskInstrumentType
 import ru.moex.tradinglab.analysis.TradeDirection
 import ru.moex.tradinglab.data.local.MarketInstrumentEntity
 import ru.moex.tradinglab.data.remote.FuturesSpecificationLoadResult
-import ru.moex.tradinglab.data.remote.LoadedFuturesSpecification
 import ru.moex.tradinglab.data.remote.MoexFuturesSpecificationRepository
 import java.time.Instant
 import java.time.ZoneId
