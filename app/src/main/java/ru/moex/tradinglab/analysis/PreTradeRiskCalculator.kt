@@ -124,6 +124,10 @@ object PreTradeRiskCalculator {
         val executedEntry = if (isLong) input.entryPrice * (1.0 + slip) else input.entryPrice * (1.0 - slip)
         val executedStop = if (isLong) input.stopPrice * (1.0 - slip) else input.stopPrice * (1.0 + slip)
         val executedTarget = if (isLong) input.targetPrice * (1.0 - slip) else input.targetPrice * (1.0 + slip)
+        if (!executedEntry.isFinite() || executedEntry <= 0.0 ||
+            !executedStop.isFinite() || executedStop <= 0.0 ||
+            !executedTarget.isFinite() || executedTarget <= 0.0
+        ) return rejected("После учёта проскальзывания цена исполнения должна оставаться положительной")
 
         val entryNotionalPerUnit = executedEntry * multiplier
         val stopNotionalPerUnit = executedStop * multiplier
@@ -148,6 +152,14 @@ object PreTradeRiskCalculator {
         } else {
             spec.initialMarginPerContract + entryFeePerUnit
         }
+        if (!entryNotionalPerUnit.isFinite() || entryNotionalPerUnit <= 0.0 ||
+            !stopNotionalPerUnit.isFinite() || stopNotionalPerUnit <= 0.0 ||
+            !targetNotionalPerUnit.isFinite() || targetNotionalPerUnit <= 0.0 ||
+            !entryFeePerUnit.isFinite() || entryFeePerUnit < 0.0 ||
+            !stopFeePerUnit.isFinite() || stopFeePerUnit < 0.0 ||
+            !targetFeePerUnit.isFinite() || targetFeePerUnit < 0.0 ||
+            !capitalPerUnit.isFinite() || capitalPerUnit <= 0.0
+        ) return rejected("Промежуточные денежные значения расчёта некорректны")
         val capitalLimitedUnits = floor(input.capital / capitalPerUnit).toInt().coerceAtLeast(0)
         val rawUnits = min(riskLimitedUnits, capitalLimitedUnits)
         val quantityStep = if (spec == null) input.lotSize else 1
@@ -169,7 +181,11 @@ object PreTradeRiskCalculator {
         val requiredCapital = capitalPerUnit * quantity
         val ratio = totalReward / totalLoss
 
-        if (totalLoss > riskBudget + 1e-8 || !ratio.isFinite()) {
+        if (!totalLoss.isFinite() || !totalReward.isFinite() || !totalEntryNotional.isFinite() ||
+            !roundTripCommission.isFinite() || !roundTripSlippage.isFinite() ||
+            !requiredCapital.isFinite() || !ratio.isFinite()
+        ) return rejected("Итоговые значения расчёта выходят за допустимый числовой диапазон")
+        if (totalLoss > riskBudget + 1e-8) {
             return rejected("Расчёт не прошёл контроль лимита риска")
         }
         return PreTradeRiskResult.Ready(
