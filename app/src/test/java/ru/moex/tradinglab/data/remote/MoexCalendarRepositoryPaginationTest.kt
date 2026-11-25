@@ -42,7 +42,7 @@ class MoexCalendarRepositoryPaginationTest {
         )
     }
 
-    @Test fun readsEveryPageAndReturnsAllSessionRows() = runBlocking {
+    @Test fun readsEveryPageAndConfirmsCompletionAfterShortPage() = runBlocking {
         val all = (0 until 101).map(::sessionRow)
         val client = FakeClient { start -> all.drop(start).take(100) }
         val result = MoexCalendarRepository(client).loadSessionPeriods(
@@ -54,7 +54,7 @@ class MoexCalendarRepositoryPaginationTest {
         )
 
         assertEquals(101, result.size)
-        assertEquals(listOf(0, 100), client.requestedStarts)
+        assertEquals(listOf(0, 100, 101), client.requestedStarts)
     }
 
     @Test fun exactPageBoundaryRequiresAnEmptyConfirmationPage() = runBlocking {
