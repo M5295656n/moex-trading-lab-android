@@ -110,4 +110,29 @@ class PreTradeRiskCalculatorTest {
         val result = PreTradeRiskCalculator.calculate(equityInput(stop = 105.0, target = 90.0))
         assertTrue((result as PreTradeRiskResult.Rejected).reason.contains("сторону"))
     }
+    @Test fun rejectsSlippageThatWouldCreateNonPositiveExecutionPrices() {
+        val input = equityInput().copy(slippageBasisPointsPerSide = 20_000.0)
+        val result = PreTradeRiskCalculator.calculate(input)
+        assertTrue(result is PreTradeRiskResult.Rejected)
+        assertTrue((result as PreTradeRiskResult.Rejected).reason.contains("проскальзывания"))
+    }
+
+    @Test fun sizesShortFuturesPosition() {
+        val spec = FuturesRiskSpec(1.0, 1.0, 120.0, "2026-12-17", "MOEX ISS", 1_000L)
+        val input = PreTradeRiskInput(
+            capital = 1_000.0, riskFraction = 0.02,
+            instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.SHORT,
+            entryPrice = 100.0, stopPrice = 110.0, targetPrice = 80.0,
+            slippageBasisPointsPerSide = 1.0,
+            futuresSpec = spec, commissionPerContractPerSide = 1.2,
+            currentTimeEpochMillis = 2_000L, asOfDate = "2026-11-25"
+        )
+        val result = PreTradeRiskCalculator.calculate(input)
+        assertTrue(result is PreTradeRiskResult.Ready)
+        val ready = result as PreTradeRiskResult.Ready
+        assertEquals(1, ready.quantity)
+        assertTrue(ready.estimatedMaximumLoss <= input.capital * input.riskFraction)
+        assertTrue(ready.estimatedNetReward > 0.0)
+    }
+
 }
