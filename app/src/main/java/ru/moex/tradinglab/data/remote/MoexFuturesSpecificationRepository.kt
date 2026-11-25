@@ -1,6 +1,7 @@
 package ru.moex.tradinglab.data.remote
 
 import com.google.gson.JsonElement
+import kotlinx.coroutines.CancellationException
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -59,6 +60,8 @@ class MoexFuturesSpecificationRepository(
                     risks.receivedAtEpochMillis
                 )
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             FuturesSpecificationLoadResult.Rejected(
                 "Не удалось получить спецификацию MOEX ISS: ${error.message ?: error::class.java.simpleName}"
