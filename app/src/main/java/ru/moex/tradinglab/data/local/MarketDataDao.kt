@@ -131,14 +131,13 @@ interface MarketDataDao {
 
     @Query("""
         UPDATE history_coverage
-        SET gapCount = :gapCount, gapsJson = :gapsJson, freshnessStatus = :freshnessStatus
+        SET gapCount = :gapCount, gapsJson = :gapsJson
         WHERE coverageId = :coverageId
     """)
     suspend fun updateCoverageQuality(
         coverageId: String,
         gapCount: Int,
-        gapsJson: String,
-        freshnessStatus: String
+        gapsJson: String
     ): Int
 
     @Query("""
