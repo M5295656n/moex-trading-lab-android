@@ -80,7 +80,7 @@ class SecuritiesListingDbfParserTest {
 
     @Test
     fun rejectsTruncatedDbfInsideZip() {
-        val bytes = archive(listOf(row("SBER", "TQBR", "Y", "Y", "Y"))).dropLast(12).toByteArray()
+        val bytes = archive(listOf(row("SBER", "TQBR", "Y", "Y", "Y")), truncateRecords = true)
         expectFailure { SecuritiesListingDbfParser.parseArchive(bytes) }
     }
 
@@ -97,7 +97,7 @@ class SecuritiesListingDbfParserTest {
     private fun row(secId: String, boardId: String, morning: String, evening: String, weekend: String) =
         TestRow("20261125", "20261125", boardId, secId, morning, evening, weekend)
 
-    private fun archive(rows: List<TestRow>, reorder: Boolean = false, omitWeekend: Boolean = false): ByteArray {
+    private fun archive(rows: List<TestRow>, reorder: Boolean = false, omitWeekend: Boolean = false, truncateRecords: Boolean = false): ByteArray {
         val fields = buildList {
             add(FieldDef("TRADEDATE", 'D', 8))
             add(FieldDef("TRDSESDATE", 'D', 8))
@@ -127,7 +127,7 @@ class SecuritiesListingDbfParserTest {
             dbf.write(descriptor)
         }
         dbf.write(0x0D)
-        rows.forEach { item ->
+        if (!truncateRecords) rows.forEach { item ->
             dbf.write(0x20)
             fields.forEach { field ->
                 val value = when (field.name) {
