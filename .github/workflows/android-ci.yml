@@ -21,7 +21,7 @@ permissions:
 jobs:
   android-build:
     name: Tests and APK builds
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       MOEX_SIGNING_KEYSTORE_BASE64: ${{ secrets.MOEX_SIGNING_KEYSTORE_BASE64 }}
       MOEX_SIGNING_STORE_PASSWORD: ${{ secrets.MOEX_SIGNING_STORE_PASSWORD }}
@@ -49,6 +49,13 @@ jobs:
       - name: Compile Android instrumentation tests
         run: gradle compileDebugAndroidTestKotlin
 
+      - name: Enable KVM for Android Emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -e /dev/kvm
+
       - name: Run Android instrumentation tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -56,6 +63,9 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          emulator-boot-timeout: 600
+          disable-linux-hw-accel: false
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: gradle connectedDebugAndroidTest
 
