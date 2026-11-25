@@ -213,7 +213,7 @@ class MoexFuturesSpecificationRepositoryTest {
 
     private fun row(vararg values: Pair<String, String?>): Map<String, String?> = values.toMap()
 
-    private class FuturesTablesFake : MoexIssTableClient {
+    private inner class FuturesTablesFake : MoexIssTableClient {
         val calls = mutableListOf<Pair<String, Map<String, String>>>()
 
         override suspend fun getTable(
