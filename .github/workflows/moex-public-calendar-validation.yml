@@ -71,6 +71,53 @@ jobs:
             fi
           done
 
+      - name: Test historical SecuritiesListing archive coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://iss.moex.com/iss/archives/files/securities_listing_latest.json"
+          for params in "iss.meta=off" "from=2026-10-01&till=2026-11-25&iss.meta=off" "from=2026-10-01&till=2026-11-25&start=0&limit=1000&iss.meta=off"; do
+            body="/tmp/archive-index-$(echo "$params" | md5sum | cut -c1-8).json"
+            meta="$(curl --insecure --fail --silent --show-error --location --max-time 45 -o "$body" -w '%{http_code}|%{content_type}|%{size_download}' "$base?$params")"
+            echo "ARCHIVE_INDEX_PARAMS=$params RESULT=$meta"
+            jq -c '.files as $f | {rows: ($f.data|length), min_date: ([$f.data[][2]]|min), max_date: ([$f.data[][3]]|max), dates: ([$f.data[][2]]|unique), matching_urls: [$f.data[] | select(.[0]=="securities_listing_latest" and .[1]=="csv") | {date:.[2], url:.[6]}]' "$body"
+          done
+          curl --insecure --fail --silent --show-error --location --max-time 90 \
+            'https://iss.moex.com/iss/archives/files/securities_listing_latest.json?from=2026-10-01&till=2026-11-25&start=0&limit=1000&iss.meta=off' \
+            -o /tmp/archive-index-history.json
+          python3 - <<'PY'
+          import csv, io, json, urllib.request, zipfile
+          from urllib.error import URLError
+          import subprocess
+          data=json.load(open('/tmp/archive-index-history.json', encoding='utf-8'))
+          rows=data['files']['data']
+          targets=[r for r in rows if r[0]=='securities_listing_latest' and r[1]=='csv' and r[2] in ('2026-10-27','2026-11-25')]
+          if len(targets)!=2:
+              raise SystemExit(f'Expected archive endpoints for both boundary dates, got {[(r[2],r[6]) for r in targets]}')
+          for row in targets:
+              date,url=row[2],row[6]
+              full='https://iss.moex.com'+url
+              path='/tmp/securities-'+date+'.zip'
+              subprocess.run(['curl','--insecure','--fail','--silent','--show-error','--location','--max-time','90','-o',path,full],check=True)
+              with zipfile.ZipFile(path) as z:
+                  info=z.infolist()[0]
+                  raw=z.read(info)
+                  text=None
+                  for enc in ('utf-8-sig','cp1251','utf-8'):
+                      try: text=raw.decode(enc); break
+                      except UnicodeDecodeError: pass
+                  if text is None: raise SystemExit(f'Cannot decode {info.filename}')
+                  sample=text[:8192]
+                  import csv as csvmod
+                  try: dialect=csvmod.Sniffer().sniff(sample, delimiters=';,\\t|')
+                  except csvmod.Error: dialect=csvmod.excel; dialect.delimiter=';'
+                  reader=csvmod.DictReader(io.StringIO(text), dialect=dialect)
+                  count=0; headers=reader.fieldnames
+                  for _ in reader: count+=1
+                  print('ARCHIVE_FILE_VALIDATED=',json.dumps({'date':date,'url':full,'member':info.filename,'bytes':len(raw),'encoding':enc,'delimiter':dialect.delimiter,'headers':headers,'rows':count},ensure_ascii=False))
+                  if count < 1000: raise SystemExit(f'Unexpectedly small archive for {date}: {count}')
+          PY
+
       - name: Confirm no credential or paid endpoint is required
         shell: bash
         run: |
