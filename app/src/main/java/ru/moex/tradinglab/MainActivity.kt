@@ -77,6 +77,7 @@ class MainActivity : ComponentActivity() {
                 TradingLabRoot(
                     database = database,
                     sync = marketDataSync,
+                    calendar = calendarRepository,
                     futuresSpecifications = futuresSpecifications,
                     publicFuturesCatalog = publicFuturesCatalog
                 )
@@ -89,6 +90,7 @@ class MainActivity : ComponentActivity() {
 private fun TradingLabRoot(
     database: TradingLabDatabase,
     sync: MoexMarketDataSync,
+    calendar: MoexCalendarRepository,
     futuresSpecifications: MoexFuturesSpecificationRepository,
     publicFuturesCatalog: MoexPublicFuturesCatalogRepository
 ) {
@@ -137,7 +139,7 @@ private fun TradingLabRoot(
                         MainTab.BACKTEST -> BacktestScreen(
                             dao = dao,
                             sync = sync,
-                            calendar = calendarRepository
+                            calendar = calendar
                         )
                         MainTab.DATA -> MarketDataDiagnosticsScreen(
                             dao = dao,
