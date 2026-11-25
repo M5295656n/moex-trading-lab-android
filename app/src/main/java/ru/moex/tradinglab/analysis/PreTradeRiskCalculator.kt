@@ -5,6 +5,8 @@ import kotlin.math.floor
 import kotlin.math.min
 import kotlin.math.round
 import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneId
 
 enum class RiskInstrumentType { EQUITY, FUTURE }
 enum class TradeDirection { LONG, SHORT }
@@ -108,7 +110,9 @@ object PreTradeRiskCalculator {
                 return rejected("Спецификация фьючерса устарела: требуется обновление данных")
             }
             if (input.commissionPerContractPerSide == null) return rejected("Не задана комиссия брокера за контракт")
-            if (LocalDate.parse(spec.expirationDate).isBefore(asOfDate)) return rejected("Срок экспирации контракта уже прошёл")
+            val marketDate = Instant.ofEpochMilli(now).atZone(ZoneId.of("Europe/Moscow")).toLocalDate()
+            if (asOfDate != marketDate) return rejected("Дата расчёта не совпадает с текущей датой по Москве")
+            if (LocalDate.parse(spec.expirationDate).isBefore(marketDate)) return rejected("Срок экспирации контракта уже прошёл")
             if (!isAligned(input.entryPrice, spec.tickSize) ||
                 !isAligned(input.stopPrice, spec.tickSize) ||
                 !isAligned(input.targetPrice, spec.tickSize)
