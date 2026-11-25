@@ -23,7 +23,6 @@ import ru.moex.tradinglab.analysis.PreTradeRiskResult
 import ru.moex.tradinglab.analysis.RiskInstrumentType
 import ru.moex.tradinglab.analysis.TradeDirection
 import ru.moex.tradinglab.data.local.MarketInstrumentEntity
-import java.time.LocalDate
 import java.time.ZoneId
 
 /**
