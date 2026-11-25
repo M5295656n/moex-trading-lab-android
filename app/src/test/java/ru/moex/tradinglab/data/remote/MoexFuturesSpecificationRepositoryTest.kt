@@ -3,11 +3,9 @@ package ru.moex.tradinglab.data.remote
 import com.google.gson.JsonParser
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
-import java.time.ZoneId
 
 class MoexFuturesSpecificationRepositoryTest {
     private val asOf = LocalDate.of(2026, 11, 25)
@@ -153,7 +151,7 @@ class MoexFuturesSpecificationRepositoryTest {
 
     @Test
     fun repositoryRejectsIncompletePagination() = runBlocking {
-        val client = FuturesTablesFake(fullPages = true)
+        val client = FuturesTablesFake()
         val result = MoexFuturesSpecificationRepository(client).load(
             secId = "SiZ6",
             asOfDate = asOf,
@@ -194,9 +192,7 @@ class MoexFuturesSpecificationRepositoryTest {
 
     private fun row(vararg values: Pair<String, String?>): Map<String, String?> = values.toMap()
 
-    private class FuturesTablesFake(
-        private val fullPages: Boolean = false
-    ) : MoexIssTableClient {
+    private class FuturesTablesFake : MoexIssTableClient {
         val calls = mutableListOf<Pair<String, Map<String, String>>>()
 
         override suspend fun getTable(
@@ -217,15 +213,13 @@ class MoexFuturesSpecificationRepositoryTest {
                 )
                 else -> emptyList()
             }
-            val jsonRows = if (fullPages) values else values
-            val rows = jsonRows.map { json ->
+            val rows = values.map { json ->
                 JsonParser.parseString(json).asJsonObject.entrySet().associate { it.key to it.value }
             }
-            val returned = if (fullPages) rows else rows
             return IssTable(
                 endpoint = endpoint,
-                columns = returned.flatMap { it.keys }.distinct(),
-                rows = returned,
+                columns = rows.flatMap { it.keys }.distinct(),
+                rows = rows,
                 fetchedAtEpochMillis = 1_795_600_000_000L
             )
         }
