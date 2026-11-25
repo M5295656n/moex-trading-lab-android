@@ -156,7 +156,7 @@ internal object FuturesSpecificationMapper {
         securitiesRows: List<Map<String, String?>>,
         paramsRows: List<Map<String, String?>>,
         risksRows: List<Map<String, String?>>,
-        receivedAtEpochMillis: Long
+        receivedAtEpochMillis: Long = System.currentTimeMillis()
     ): FuturesSpecificationLoadResult {
         val security = uniqueMatch(secId, securitiesRows)
             ?: return FuturesSpecificationLoadResult.Rejected(
@@ -205,14 +205,14 @@ internal object FuturesSpecificationMapper {
 
         val paramsTick = params.number("TICK")
         val securityTick = security.number("MIN_STEP")
-        val tick = consistentValue("шаг цены", paramsTick, securityTick)
+        val tick = consistentValue(paramsTick, securityTick)
             ?: return FuturesSpecificationLoadResult.Rejected(
                 "В MOEX ISS отсутствует однозначный шаг цены (TICK / MIN_STEP)"
             )
 
         val paramsTickValue = params.number("TICK_PRICE")
         val securityTickValue = security.number("MIN_STEP_PRICE")
-        val tickValue = consistentValue("стоимость шага", paramsTickValue, securityTickValue)
+        val tickValue = consistentValue(paramsTickValue, securityTickValue)
             ?: return FuturesSpecificationLoadResult.Rejected(
                 "В MOEX ISS отсутствует однозначная стоимость шага цены (TICK_PRICE / MIN_STEP_PRICE)"
             )
@@ -320,7 +320,7 @@ internal object FuturesSpecificationMapper {
         return distinct.singleOrNull()
     }
 
-    private fun consistentValue(label: String, first: Double?, second: Double?): Double? {
+    private fun consistentValue(first: Double?, second: Double?): Double? {
         val validFirst = first?.takeIf { it.isFinite() && it > 0.0 }
         val validSecond = second?.takeIf { it.isFinite() && it > 0.0 }
         if (validFirst == null) return validSecond
