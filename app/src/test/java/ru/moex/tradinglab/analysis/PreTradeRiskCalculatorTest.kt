@@ -79,7 +79,7 @@ class PreTradeRiskCalculatorTest {
         val input = PreTradeRiskInput(
             instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
             entryPrice = 100.0, stopPrice = 90.0, targetPrice = 120.0,
-            futuresSpec = spec, commissionPerContractPerSide = 1.0, asOfDate = "2026-11-25"
+            futuresSpec = spec, commissionPerContractPerSide = 1.0, currentTimeEpochMillis = 2_000L, asOfDate = "2026-11-25"
         )
         assertTrue((PreTradeRiskCalculator.calculate(input) as PreTradeRiskResult.Rejected).reason.contains("экспирации"))
     }
