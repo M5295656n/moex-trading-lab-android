@@ -69,7 +69,7 @@ class PreTradeRiskCalculatorTest {
     }
 
     @Test fun rejectsOffTickFuturesPrices() {
-        val spec = FuturesRiskSpec(1.0, 1.0, 100.0, "2026-12-17", "MOEX", 1L)
+        val spec = FuturesRiskSpec(1.0, 1.0, 100.0, "2026-12-17", "MOEX", freshSpecTime)
         val input = PreTradeRiskInput(
             instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
             entryPrice = 100.5, stopPrice = 90.0, targetPrice = 120.0,
@@ -79,7 +79,7 @@ class PreTradeRiskCalculatorTest {
     }
 
     @Test fun rejectsExpiredFuture() {
-        val spec = FuturesRiskSpec(1.0, 1.0, 100.0, "2026-11-20", "MOEX", 1L)
+        val spec = FuturesRiskSpec(1.0, 1.0, 100.0, "2026-11-20", "MOEX", freshSpecTime)
         val input = PreTradeRiskInput(
             instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
             entryPrice = 100.0, stopPrice = 90.0, targetPrice = 120.0,
