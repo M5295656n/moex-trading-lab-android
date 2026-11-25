@@ -130,6 +130,18 @@ interface MarketDataDao {
     suspend fun upsertCoverage(coverage: HistoryCoverageEntity)
 
     @Query("""
+        UPDATE history_coverage
+        SET gapCount = :gapCount, gapsJson = :gapsJson, freshnessStatus = :freshnessStatus
+        WHERE coverageId = :coverageId
+    """)
+    suspend fun updateCoverageQuality(
+        coverageId: String,
+        gapCount: Int,
+        gapsJson: String,
+        freshnessStatus: String
+    ): Int
+
+    @Query("""
         SELECT * FROM history_coverage
         WHERE instrumentId = :instrumentId AND intervalMinutes = :intervalMinutes
         ORDER BY fetchedAtEpochMillis DESC
