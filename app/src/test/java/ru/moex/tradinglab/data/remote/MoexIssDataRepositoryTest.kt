@@ -23,14 +23,34 @@ class MoexIssDataRepositoryTest {
             pageSize = 2
         )
 
-        assertEquals(listOf(0, 2), client.requestedStarts)
+        assertEquals(listOf(0, 2, 3), client.requestedStarts)
         assertEquals(
             listOf("2026-01-02 10:00:00", "2026-01-02 10:01:00", "2026-01-02 10:02:00"),
             result.candles.map { it.begin }
         )
-        assertEquals(2, result.pageCount)
+        assertEquals(3, result.pageCount)
         assertEquals(HistoryCompleteness.COMPLETE, result.completeness)
         assertTrue(result.isComplete)
+    }
+
+    @Test
+    fun actualRowCountDrivesNextOffsetWhenIssCapsRequestedPageSize() = runBlocking {
+        val serverPageSize = 100
+        val allCandles = (0 until 250).map { index ->
+            candle("2026-01-${(index + 1).toString().padStart(3, '0')} 00:00:00")
+        }
+        val pages = allCandles.chunked(serverPageSize)
+        val client = FakeIssClient(pageSize = serverPageSize, pages = pages)
+
+        val result = MoexIssDataRepository(client).loadCandles(
+            endpoint = "candles",
+            pageSize = 500
+        )
+
+        assertEquals(listOf(0, 100, 200, 250), client.requestedStarts)
+        assertEquals(250, result.candles.size)
+        assertEquals(4, result.pageCount)
+        assertEquals(HistoryCompleteness.COMPLETE, result.completeness)
     }
 
     @Test
@@ -97,6 +117,8 @@ class MoexIssDataRepositoryTest {
         assertEquals(1, result.candles.size)
         assertEquals(null, result.candles.single().close)
         assertEquals(1, result.skippedRows)
+        assertEquals(listOf(0, 2), client.requestedStarts)
+        assertEquals(2, result.pageCount)
         assertEquals(HistoryCompleteness.COMPLETE, result.completeness)
     }
 
