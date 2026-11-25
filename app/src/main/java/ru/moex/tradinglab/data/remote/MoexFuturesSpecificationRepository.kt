@@ -148,6 +148,8 @@ data class LoadedFuturesSpecification(
 internal object FuturesSpecificationMapper {
     private val moscow = ZoneId.of("Europe/Moscow")
     private val localDateTimeFormatters = listOf(
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"),
+        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS"),
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
         DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"),
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
@@ -181,6 +183,20 @@ internal object FuturesSpecificationMapper {
         )
         val documentTimes = linkedMapOf<String, Long>()
         rows.forEach { (table, row) ->
+            val referenceDateText = row["REFERENCE_DATE"]?.takeIf(String::isNotBlank)
+                ?: return FuturesSpecificationLoadResult.Rejected(
+                    "В таблице $table отсутствует REFERENCE_DATE"
+                )
+            val referenceDate = parseDate(referenceDateText)
+                ?: return FuturesSpecificationLoadResult.Rejected(
+                    "Некорректный REFERENCE_DATE='$referenceDateText' в таблице $table"
+                )
+            if (referenceDate != asOfDate) {
+                return FuturesSpecificationLoadResult.Rejected(
+                    "Таблица $table содержит данные за $referenceDate вместо запрошенной даты $asOfDate"
+                )
+            }
+
             val docDate = row["DOC_DATE"]?.takeIf(String::isNotBlank)
                 ?: return FuturesSpecificationLoadResult.Rejected(
                     "В таблице $table отсутствует DOC_DATE; актуальность спецификации не подтверждена"
