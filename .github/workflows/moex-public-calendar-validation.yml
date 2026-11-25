@@ -1,0 +1,212 @@
+name: MOEX public calendar validation
+
+on:
+  push:
+    branches:
+      - "feature/moex-public-calendar-validation-2026-11-25"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-calendar-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe public engine endpoints for current and historical schedule data
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://iss.moex.com/iss"
+          for market in stock futures; do
+            for params in \
+              "iss.meta=off&iss.json=extended" \
+              "from=2026-11-20&till=2026-11-25&iss.meta=off&iss.json=extended" \
+              "date=2026-11-24&iss.meta=off&iss.json=extended"; do
+              body="/tmp/${market}-$(echo "$params" | md5sum | cut -c1-8).json"
+              meta="$(curl --insecure --fail --silent --show-error --location --max-time 30 \
+                -H 'Accept: application/json' \
+                -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
+                -o "$body" -w '%{http_code}|%{content_type}|%{size_download}' \
+                "$base/engines/$market.json?$params")"
+              echo "ENGINE=$market PARAMS=$params HTTP=$meta"
+              jq -e '.[1] != null' "$body" >/dev/null
+              jq -c --arg market "$market" --arg params "$params" '
+                .[1] | {
+                  market: $market,
+                  params: $params,
+                  tables: (keys),
+                  timetable_rows: ((.timetable // []) | length),
+                  dailytable_rows: ((.dailytable // []) | length),
+                  session_schedule_rows: ((.session_schedule // []) | length),
+                  session_schedule_dates: (([.session_schedule[]?.trade_session_date // empty] | unique)),
+                  dailytable_dates: (([.dailytable[]?.date // empty] | sort | unique))
+                }' "$body"
+            done
+          done
+
+      - name: Probe public archive and instrument-board snapshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          urls=(
+            "https://iss.moex.com/file/stock_boardsecid/SL.ZIP"
+            "https://iss.moex.com/iss/archives/files/securities_listing_latest.json?iss.meta=off"
+            "https://iss.moex.com/iss/calendars/stock/securities/boards.json?from=2026-11-20&till=2026-11-25&iss.meta=off"
+            "https://iss.moex.com/iss/calendars/futures/session.json?from=2026-11-20&till=2026-11-25&iss.meta=off"
+          )
+          for url in "${urls[@]}"; do
+            body="/tmp/probe-$RANDOM"
+            meta="$(curl --insecure --silent --show-error --location --max-time 45 \
+              -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
+              -o "$body" -w '%{http_code}|%{content_type}|%{size_download}|%{url_effective}' "$url")" || meta="000|transport-error"
+            echo "URL=$url RESULT=$meta"
+            echo "PREFIX=$(head -c 160 "$body" | tr '\n' ' ')"
+            if [[ "$url" == *"securities_listing_latest.json"* ]]; then
+              echo "ARCHIVE_INDEX_MATCHING_ROWS"
+              jq -c '.files | {columns, total_rows: (.data | length), listing_rows: [.data[] | select((.[0] // "") | test("securities_listing|stock_boardsecid"; "i"))]}' "$body"
+            fi
+            if file "$body" | grep -qi 'Zip archive'; then
+              unzip -t "$body" | tail -2
+            fi
+          done
+
+      - name: Test historical SecuritiesListing archive coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://iss.moex.com/iss/archives/files/securities_listing_latest.json"
+          for params in "iss.meta=off" "from=2026-10-01&till=2026-11-25&iss.meta=off" "from=2026-10-01&till=2026-11-25&start=0&limit=1000&iss.meta=off"; do
+            body="/tmp/archive-index-$(echo "$params" | md5sum | cut -c1-8).json"
+            meta="$(curl --insecure --fail --silent --show-error --location --max-time 45 -o "$body" -w '%{http_code}|%{content_type}|%{size_download}' "$base?$params")"
+            echo "ARCHIVE_INDEX_PARAMS=$params RESULT=$meta"
+            jq -c '.files as $f | {rows: ($f.data|length), min_date: ([$f.data[][2]]|min), max_date: ([$f.data[][3]]|max), dates: ([$f.data[][2]]|unique), matching_urls: [$f.data[] | select(.[0]=="securities_listing_latest" and .[1]=="csv") | {date:.[2], url:.[6]}]}' "$body"
+          done
+          curl --insecure --fail --silent --show-error --location --max-time 90 \
+            'https://iss.moex.com/iss/archives/files/securities_listing_latest.json?from=2026-10-01&till=2026-11-25&start=0&limit=1000&iss.meta=off' \
+            -o /tmp/archive-index-history.json
+          python3 - <<'PY'
+          import csv, io, json, urllib.request, zipfile
+          from urllib.error import URLError
+          import subprocess
+          data=json.load(open('/tmp/archive-index-history.json', encoding='utf-8'))
+          rows=data['files']['data']
+          targets=[r for r in rows if r[0]=='securities_listing_latest' and r[1]=='csv' and r[2] in ('2026-10-27','2026-11-25')]
+          if len(targets)!=2:
+              raise SystemExit(f'Expected archive endpoints for both boundary dates, got {[(r[2],r[6]) for r in targets]}')
+          for row in targets:
+              date,url=row[2],row[6]
+              full='https://iss.moex.com'+url
+              path='/tmp/securities-'+date+'.zip'
+              proc=subprocess.run(['curl','--insecure','--silent','--show-error','--location','--max-time','90','-o',path,'-w','%{http_code}|%{content_type}|%{size_download}|%{url_effective}',full],check=True,capture_output=True,text=True)
+              print('ARCHIVE_DOWNLOAD=',date,proc.stdout,'FILE_PREFIX=',open(path,'rb').read(100))
+              prefix=open(path,'rb').read(4)
+              if not proc.stdout.startswith('200|') or prefix != b'PK\x03\x04':
+                  print('HISTORICAL_ARCHIVE_NOT_DOWNLOADABLE=',date,proc.stdout,'PREFIX=',prefix)
+                  continue
+              with zipfile.ZipFile(path) as z:
+                  info=z.infolist()[0]
+                  raw=z.read(info)
+                  text=None
+                  for enc in ('utf-8-sig','cp1251','utf-8'):
+                      try: text=raw.decode(enc); break
+                      except UnicodeDecodeError: pass
+                  if text is None: raise SystemExit(f'Cannot decode {info.filename}')
+                  sample=text[:8192]
+                  import csv as csvmod
+                  try: dialect=csvmod.Sniffer().sniff(sample, delimiters=';,\\t|')
+                  except csvmod.Error: dialect=csvmod.excel; dialect.delimiter=';'
+                  reader=csvmod.DictReader(io.StringIO(text), dialect=dialect)
+                  count=0; headers=reader.fieldnames
+                  for _ in reader: count+=1
+                  print('ARCHIVE_FILE_VALIDATED=',json.dumps({'date':date,'url':full,'member':info.filename,'bytes':len(raw),'encoding':enc,'delimiter':dialect.delimiter,'headers':headers,'rows':count},ensure_ascii=False))
+                  if count < 1000: raise SystemExit(f'Unexpectedly small archive for {date}: {count}')
+          PY
+
+      - name: Confirm no credential or paid endpoint is required
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "${MOEX_TOKEN:-}"
+          echo "MOEX_TOKEN is not configured; this validation uses public iss.moex.com only."
+
+
+      - name: Inspect public SecuritiesListing DBF schema and session flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --insecure --fail --silent --show-error --location --max-time 90 \
+            'https://iss.moex.com/file/stock_boardsecid/SL.ZIP' -o /tmp/SL.ZIP
+          python3 - <<'PY'
+          import collections, json, struct, zipfile
+
+          with zipfile.ZipFile('/tmp/SL.ZIP') as archive:
+              names=[n for n in archive.namelist() if n.lower().endswith('.dbf')]
+              if len(names) != 1:
+                  raise SystemExit(f'Expected one DBF member, found {names}')
+              raw=archive.read(names[0])
+
+          if len(raw) < 33:
+              raise SystemExit('DBF is too short')
+          record_count=struct.unpack_from('<I', raw, 4)[0]
+          codepage_marker=raw[29]
+          header_length=struct.unpack_from('<H', raw, 8)[0]
+          record_length=struct.unpack_from('<H', raw, 10)[0]
+          fields=[]
+          offset=32
+          while offset < header_length and raw[offset] != 0x0D:
+              descriptor=raw[offset:offset+32]
+              if len(descriptor) != 32:
+                  raise SystemExit('Truncated DBF field descriptor')
+              name=descriptor[:11].split(b'\x00',1)[0].decode('ascii', 'replace').strip()
+              fields.append({'name':name,'type':chr(descriptor[11]),'length':descriptor[16],'decimals':descriptor[17]})
+              offset += 32
+          if not fields or header_length + record_count * record_length > len(raw):
+              raise SystemExit('Invalid DBF header or record bounds')
+          expected=1 + sum(f['length'] for f in fields)
+          if expected != record_length:
+              raise SystemExit(f'Record length mismatch: header={record_length}, fields={expected}')
+          print('DBF_SCHEMA=', json.dumps({
+              'member':names[0], 'record_count':record_count, 'header_length':header_length,
+              'record_length':record_length, 'codepage_marker':codepage_marker, 'fields':fields
+          }, ensure_ascii=False))
+          counters={f['name']:collections.Counter() for f in fields}
+          flag_combinations=collections.Counter()
+          selected=[]
+          targeted_tqbr=[]
+          samples=[]
+          for index in range(record_count):
+              start=header_length + index*record_length
+              record=raw[start:start+record_length]
+              if record[0:1] == b'*':
+                  continue
+              cursor=1
+              row={}
+              for field in fields:
+                  size=field['length']
+                  value=record[cursor:cursor+size].decode('cp866','replace').strip()
+                  cursor += size
+                  row[field['name']]=value
+                  counters[field['name']][value] += 1
+              if len(samples) < 8:
+                  samples.append(row)
+              sid=row.get('SECURITYID','')
+              if sid in {'SBER','GAZP','LKOH','YDEX','T'} and len(selected) < 100:
+                  selected.append({k:row.get(k,'') for k in ('TRADEDATE','TRDSESDATE','BOARDID','SECURITYID','EVENINGSES','WEEKENDSES','MORNINGSES')})
+              if row.get('BOARDID') == 'TQBR' and sid in {'SBER','GAZP','LKOH','YDEX','T'}:
+                  targeted_tqbr.append({k:row.get(k,'') for k in ('TRADEDATE','TRDSESDATE','BOARDID','SECURITYID','BOARDNAME','EVENINGSES','WEEKENDSES','MORNINGSES')})
+              flag_combinations[(row.get('MORNINGSES',''),row.get('EVENINGSES',''),row.get('WEEKENDSES',''))] += 1
+          print('DBF_SAMPLE_ROWS=', json.dumps(samples, ensure_ascii=False))
+          print('DBF_SESSION_FLAG_COMBINATIONS=', json.dumps([
+              {'morning':k[0],'evening':k[1],'weekend':k[2],'rows':v}
+              for k,v in flag_combinations.most_common()
+          ], ensure_ascii=False))
+          print('DBF_SELECTED_SECURITIES=', json.dumps(selected, ensure_ascii=False))
+          print('DBF_TARGETED_TQBR=', json.dumps(targeted_tqbr, ensure_ascii=False))
+          for field, counts in counters.items():
+              if any(token in field.upper() for token in ('SESSION','MORNING','EVENING','WEEKEND','TRADE','BOARD','SECURITY')):
+                  print('DBF_DISTINCT=', json.dumps({
+                      'field':field, 'distinct_count':len(counts),
+                      'top_values':counts.most_common(20)
+                  }, ensure_ascii=False))
+          PY
