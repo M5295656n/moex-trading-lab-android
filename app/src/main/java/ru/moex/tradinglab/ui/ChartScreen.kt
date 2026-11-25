@@ -55,6 +55,9 @@ fun ChartScreen(
     var interval by remember { mutableStateOf(24) }
     var isLoadingHistory by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
+    var isLoadingCatalog by remember { mutableStateOf(false) }
+    var catalogLoadMessage by remember { mutableStateOf<String?>(null) }
+    var catalogLoadError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     val candlesFlow = remember(selected?.instrumentId, interval) {
@@ -80,6 +83,36 @@ fun ChartScreen(
                 loadError = error.message ?: error.javaClass.simpleName
             } finally {
                 isLoadingHistory = false
+            }
+        }
+    }
+
+    fun loadCatalogs() {
+        if (isLoadingCatalog) return
+        scope.launch {
+            isLoadingCatalog = true
+            catalogLoadMessage = null
+            catalogLoadError = null
+            try {
+                val summaries = mutableListOf<String>()
+                val failures = mutableListOf<String>()
+                MoexMarket.entries.forEach { market ->
+                    try {
+                        val result = sync.syncCatalog(market)
+                        val completeness = if (result.isComplete) "полностью" else "не полностью"
+                        summaries += "${market.name}: ${result.instruments.size}, ${completeness}"
+                    } catch (error: Exception) {
+                        failures += "${market.name}: ${error.message ?: error.javaClass.simpleName}"
+                    }
+                }
+                if (summaries.isNotEmpty()) {
+                    catalogLoadMessage = "Результаты загрузки: ${summaries.joinToString(" · ")}"
+                }
+                if (failures.isNotEmpty()) {
+                    catalogLoadError = failures.joinToString(" · ")
+                }
+            } finally {
+                isLoadingCatalog = false
             }
         }
     }
@@ -257,8 +290,35 @@ fun ChartScreen(
                             "После выбора приложение автоматически запросит историю свечей MOEX для выбранного таймфрейма.",
                             style = MaterialTheme.typography.bodySmall
                         )
+                        if (instruments.isEmpty()) {
+                            Text(
+                                "Сначала загрузите каталоги инструментов. Данные будут получены напрямую из MOEX ISS и сохранены на устройстве.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Button(
+                                onClick = { loadCatalogs() },
+                                enabled = !isLoadingCatalog,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (isLoadingCatalog) {
+                                    CircularProgressIndicator()
+                                } else {
+                                    Text("Загрузить каталоги MOEX")
+                                }
+                            }
+                            catalogLoadMessage?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall)
+                            }
+                            catalogLoadError?.let {
+                                Text(
+                                    "Не удалось загрузить каталоги: $it",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
                         OutlinedButton(onClick = onOpenDiagnostics) {
-                            Text("Открыть загрузку истории")
+                            Text("Открыть диагностику данных")
                         }
                     }
                 }
