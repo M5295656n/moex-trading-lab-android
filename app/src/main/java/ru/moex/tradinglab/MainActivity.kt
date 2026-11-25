@@ -23,6 +23,7 @@ import ru.moex.tradinglab.data.local.TradingLabDatabase
 import ru.moex.tradinglab.data.remote.MoexIssClient
 import ru.moex.tradinglab.data.remote.MoexIssDataRepository
 import ru.moex.tradinglab.data.remote.MoexFuturesSpecificationRepository
+import ru.moex.tradinglab.data.remote.MoexPublicFuturesCatalogRepository
 import ru.moex.tradinglab.data.sync.MoexMarketDataSync
 import ru.moex.tradinglab.ui.ChartScreen
 import ru.moex.tradinglab.ui.MarketDataDiagnosticsScreen
@@ -38,6 +39,10 @@ class MainActivity : ComponentActivity() {
 
     private val futuresSpecifications by lazy {
         MoexFuturesSpecificationRepository(moexIssClient)
+    }
+
+    private val publicFuturesCatalog by lazy {
+        MoexPublicFuturesCatalogRepository(moexIssClient)
     }
 
     private val database by lazy {
@@ -67,7 +72,8 @@ class MainActivity : ComponentActivity() {
                 TradingLabRoot(
                     database = database,
                     sync = marketDataSync,
-                    futuresSpecifications = futuresSpecifications
+                    futuresSpecifications = futuresSpecifications,
+                    publicFuturesCatalog = publicFuturesCatalog
                 )
             }
         }
@@ -78,7 +84,8 @@ class MainActivity : ComponentActivity() {
 private fun TradingLabRoot(
     database: TradingLabDatabase,
     sync: MoexMarketDataSync,
-    futuresSpecifications: MoexFuturesSpecificationRepository
+    futuresSpecifications: MoexFuturesSpecificationRepository,
+    publicFuturesCatalog: MoexPublicFuturesCatalogRepository
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(MainTab.CHART.ordinal) }
     val dao = database.marketDataDao()
@@ -111,6 +118,7 @@ private fun TradingLabRoot(
                             dao = dao,
                             sync = sync,
                             futuresSpecifications = futuresSpecifications,
+                            publicFuturesCatalog = publicFuturesCatalog,
                             onOpenDiagnostics = { selectedTab = MainTab.DATA.ordinal }
                         )
                         MainTab.DATA -> MarketDataDiagnosticsScreen(
