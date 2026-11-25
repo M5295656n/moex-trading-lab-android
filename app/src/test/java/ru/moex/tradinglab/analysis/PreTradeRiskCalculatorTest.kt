@@ -3,8 +3,12 @@ package ru.moex.tradinglab.analysis
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
+import java.time.ZoneId
 
 class PreTradeRiskCalculatorTest {
+    private val testNow = LocalDate.of(2026, 11, 25).atStartOfDay(ZoneId.of("Europe/Moscow")).toInstant().toEpochMilli()
+    private val freshSpecTime = testNow - 1_000L
     private fun equityInput(
         capital: Double = 1_000.0,
         riskFraction: Double = 0.02,
@@ -48,13 +52,13 @@ class PreTradeRiskCalculatorTest {
     }
 
     @Test fun futuresSizingRespectsTickValueAndMargin() {
-        val spec = FuturesRiskSpec(1.0, 1.0, 120.0, "2026-12-17", "MOEX ISS contract specification", 1_000L)
+        val spec = FuturesRiskSpec(1.0, 1.0, 120.0, "2026-12-17", "MOEX ISS contract specification", freshSpecTime)
         val input = PreTradeRiskInput(
             capital = 1_000.0, riskFraction = 0.02,
             instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
             entryPrice = 100.0, stopPrice = 90.0, targetPrice = 120.0,
             commissionRatePerSide = 0.0001, slippageBasisPointsPerSide = 1.0,
-            futuresSpec = spec, commissionPerContractPerSide = 1.2, currentTimeEpochMillis = 2_000L, asOfDate = "2026-11-25"
+            futuresSpec = spec, commissionPerContractPerSide = 1.2, currentTimeEpochMillis = testNow, asOfDate = "2026-11-25"
         )
         val result = PreTradeRiskCalculator.calculate(input)
         assertTrue(result is PreTradeRiskResult.Ready)
@@ -69,7 +73,7 @@ class PreTradeRiskCalculatorTest {
         val input = PreTradeRiskInput(
             instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
             entryPrice = 100.5, stopPrice = 90.0, targetPrice = 120.0,
-            futuresSpec = spec, commissionPerContractPerSide = 1.0, currentTimeEpochMillis = 2_000L, asOfDate = "2026-11-25"
+            futuresSpec = spec, commissionPerContractPerSide = 1.0, currentTimeEpochMillis = testNow, asOfDate = "2026-11-25"
         )
         assertTrue((PreTradeRiskCalculator.calculate(input) as PreTradeRiskResult.Rejected).reason.contains("шагу"))
     }
@@ -79,7 +83,7 @@ class PreTradeRiskCalculatorTest {
         val input = PreTradeRiskInput(
             instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
             entryPrice = 100.0, stopPrice = 90.0, targetPrice = 120.0,
-            futuresSpec = spec, commissionPerContractPerSide = 1.0, currentTimeEpochMillis = 2_000L, asOfDate = "2026-11-25"
+            futuresSpec = spec, commissionPerContractPerSide = 1.0, currentTimeEpochMillis = testNow, asOfDate = "2026-11-25"
         )
         assertTrue((PreTradeRiskCalculator.calculate(input) as PreTradeRiskResult.Rejected).reason.contains("экспирации"))
     }
@@ -93,17 +97,30 @@ class PreTradeRiskCalculatorTest {
 
 
     @Test fun rejectsStaleFuturesSpecification() {
-        val spec = FuturesRiskSpec(1.0, 1.0, 100.0, "2026-12-17", "MOEX", 1_000L)
+        val spec = FuturesRiskSpec(1.0, 1.0, 100.0, "2026-12-17", "MOEX", freshSpecTime)
         val input = PreTradeRiskInput(
             instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
             entryPrice = 100.0, stopPrice = 90.0, targetPrice = 120.0,
             futuresSpec = spec, commissionPerContractPerSide = 1.0,
-            currentTimeEpochMillis = 90_000_000L, maxSpecificationAgeMillis = 86_400_000L,
+            currentTimeEpochMillis = testNow + 90_000_000L, maxSpecificationAgeMillis = 86_400_000L,
             asOfDate = "2026-11-25"
         )
         val result = PreTradeRiskCalculator.calculate(input)
         assertTrue(result is PreTradeRiskResult.Rejected)
         assertTrue((result as PreTradeRiskResult.Rejected).reason.contains("устарела"))
+    }
+
+    @Test fun rejectsStaleCallerDateForFuturesExpirationCheck() {
+        val spec = FuturesRiskSpec(1.0, 1.0, 100.0, "2026-11-24", "MOEX", freshSpecTime)
+        val input = PreTradeRiskInput(
+            instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.LONG,
+            entryPrice = 100.0, stopPrice = 90.0, targetPrice = 120.0,
+            futuresSpec = spec, commissionPerContractPerSide = 1.0,
+            currentTimeEpochMillis = testNow, asOfDate = "2026-11-20"
+        )
+        val result = PreTradeRiskCalculator.calculate(input)
+        assertTrue(result is PreTradeRiskResult.Rejected)
+        assertTrue((result as PreTradeRiskResult.Rejected).reason.contains("текущей датой"))
     }
 
     @Test fun rejectsStopAndTargetOnWrongSide() {
@@ -118,14 +135,14 @@ class PreTradeRiskCalculatorTest {
     }
 
     @Test fun sizesShortFuturesPosition() {
-        val spec = FuturesRiskSpec(1.0, 1.0, 120.0, "2026-12-17", "MOEX ISS", 1_000L)
+        val spec = FuturesRiskSpec(1.0, 1.0, 120.0, "2026-12-17", "MOEX ISS", freshSpecTime)
         val input = PreTradeRiskInput(
             capital = 1_000.0, riskFraction = 0.02,
             instrumentType = RiskInstrumentType.FUTURE, direction = TradeDirection.SHORT,
             entryPrice = 100.0, stopPrice = 110.0, targetPrice = 80.0,
             slippageBasisPointsPerSide = 1.0,
             futuresSpec = spec, commissionPerContractPerSide = 1.2,
-            currentTimeEpochMillis = 2_000L, asOfDate = "2026-11-25"
+            currentTimeEpochMillis = testNow, asOfDate = "2026-11-25"
         )
         val result = PreTradeRiskCalculator.calculate(input)
         assertTrue(result is PreTradeRiskResult.Ready)
