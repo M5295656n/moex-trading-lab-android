@@ -11,9 +11,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MarketInstrumentEntity::class,
         CandleEntity::class,
         HistoryCoverageEntity::class,
-        CatalogSyncEntity::class
+        CatalogSyncEntity::class,
+        SecuritiesListingSnapshotEntity::class,
+        SecuritiesListingEntryEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class TradingLabDatabase : RoomDatabase() {
