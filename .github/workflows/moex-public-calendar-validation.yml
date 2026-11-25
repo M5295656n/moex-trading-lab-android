@@ -173,6 +173,7 @@ jobs:
           counters={f['name']:collections.Counter() for f in fields}
           flag_combinations=collections.Counter()
           selected=[]
+          targeted_tqbr=[]
           samples=[]
           for index in range(record_count):
               start=header_length + index*record_length
@@ -183,7 +184,7 @@ jobs:
               row={}
               for field in fields:
                   size=field['length']
-                  value=record[cursor:cursor+size].decode('cp1251','replace').strip()
+                  value=record[cursor:cursor+size].decode('cp866','replace').strip()
                   cursor += size
                   row[field['name']]=value
                   counters[field['name']][value] += 1
@@ -199,6 +200,7 @@ jobs:
               for k,v in flag_combinations.most_common()
           ], ensure_ascii=False))
           print('DBF_SELECTED_SECURITIES=', json.dumps(selected, ensure_ascii=False))
+          print('DBF_TARGETED_TQBR=', json.dumps(targeted_tqbr, ensure_ascii=False))
           for field, counts in counters.items():
               if any(token in field.upper() for token in ('SESSION','MORNING','EVENING','WEEKEND','TRADE','BOARD','SECURITY')):
                   print('DBF_DISTINCT=', json.dumps({
