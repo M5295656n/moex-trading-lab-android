@@ -161,7 +161,10 @@ class MoexIssDataRepositoryTest {
         ): IssTable {
             val start = query["start"]?.toInt() ?: 0
             requestedStarts += start
-            val rows = pages.getOrNull(start / pageSize).orEmpty().map { json ->
+            val pageIndex = pages.indices.firstOrNull { index ->
+                pages.take(index).sumOf { it.size } == start
+            }
+            val rows = pageIndex?.let { pages[it] }.orEmpty().map { json ->
                 JsonParser.parseString(json).asJsonObject.entrySet().associate { it.key to it.value }
             }
             return IssTable(
