@@ -95,14 +95,22 @@ fun ChartScreen(
             catalogLoadError = null
             try {
                 val summaries = mutableListOf<String>()
+                val failures = mutableListOf<String>()
                 MoexMarket.entries.forEach { market ->
-                    val result = sync.syncCatalog(market)
-                    val completeness = if (result.isComplete) "полностью" else "не полностью"
-                    summaries += "${market.name}: ${result.instruments.size}, ${completeness}"
+                    try {
+                        val result = sync.syncCatalog(market)
+                        val completeness = if (result.isComplete) "полностью" else "не полностью"
+                        summaries += "${market.name}: ${result.instruments.size}, ${completeness}"
+                    } catch (error: Exception) {
+                        failures += "${market.name}: ${error.message ?: error.javaClass.simpleName}"
+                    }
                 }
-                catalogLoadMessage = "Каталоги MOEX обновлены. ${summaries.joinToString(" · ")}"
-            } catch (error: Exception) {
-                catalogLoadError = error.message ?: error.javaClass.simpleName
+                if (summaries.isNotEmpty()) {
+                    catalogLoadMessage = "Результаты загрузки: ${summaries.joinToString(" · ")}"
+                }
+                if (failures.isNotEmpty()) {
+                    catalogLoadError = failures.joinToString(" · ")
+                }
             } finally {
                 isLoadingCatalog = false
             }
