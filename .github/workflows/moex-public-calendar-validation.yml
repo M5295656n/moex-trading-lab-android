@@ -1,0 +1,75 @@
+name: MOEX public calendar validation
+
+on:
+  push:
+    branches:
+      - "feature/moex-public-calendar-validation-2026-11-25"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-calendar-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe public engine endpoints for current and historical schedule data
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://iss.moex.com/iss"
+          for market in stock futures; do
+            for params in \
+              "iss.meta=off&iss.json=extended" \
+              "from=2026-11-20&till=2026-11-25&iss.meta=off&iss.json=extended" \
+              "date=2026-11-24&iss.meta=off&iss.json=extended"; do
+              body="/tmp/${market}-$(echo "$params" | md5sum | cut -c1-8).json"
+              meta="$(curl --fail --silent --show-error --location --max-time 30 \
+                -H 'Accept: application/json' \
+                -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
+                -o "$body" -w '%{http_code}|%{content_type}|%{size_download}' \
+                "$base/engines/$market.json?$params")"
+              echo "ENGINE=$market PARAMS=$params HTTP=$meta"
+              jq -e '.[1] != null' "$body" >/dev/null
+              jq -c --arg market "$market" --arg params "$params" '
+                .[1] | {
+                  market: $market,
+                  params: $params,
+                  tables: (keys),
+                  timetable_rows: ((.timetable // []) | length),
+                  dailytable_rows: ((.dailytable // []) | length),
+                  session_schedule_rows: ((.session_schedule // []) | length),
+                  session_schedule_dates: (([.session_schedule[]?.trade_session_date // empty] | unique)),
+                  dailytable_dates: (([.dailytable[]?.date // empty] | sort | unique))
+                }' "$body"
+            done
+          done
+
+      - name: Probe public archive and instrument-board snapshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          urls=(
+            "https://iss.moex.com/file/stock_boardsecid/SL.ZIP"
+            "https://iss.moex.com/iss/archives/files/securities_listing_latest.json?iss.meta=off"
+            "https://iss.moex.com/iss/calendars/stock/securities/boards.json?from=2026-11-20&till=2026-11-25&iss.meta=off"
+            "https://iss.moex.com/iss/calendars/futures/session.json?from=2026-11-20&till=2026-11-25&iss.meta=off"
+          )
+          for url in "${urls[@]}"; do
+            body="/tmp/probe-$RANDOM"
+            meta="$(curl --silent --show-error --location --max-time 45 \
+              -H 'User-Agent: MOEX-Trading-Lab-Android/1.0' \
+              -o "$body" -w '%{http_code}|%{content_type}|%{size_download}|%{url_effective}' "$url")" || meta="000|transport-error"
+            echo "URL=$url RESULT=$meta"
+            echo "PREFIX=$(head -c 160 "$body" | tr '\n' ' ')"
+            if file "$body" | grep -qi 'Zip archive'; then
+              unzip -t "$body" | tail -2
+            fi
+          done
+
+      - name: Confirm no credential or paid endpoint is required
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "${MOEX_TOKEN:-}"
+          echo "MOEX_TOKEN is not configured; this validation uses public iss.moex.com only."
