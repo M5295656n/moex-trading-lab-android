@@ -129,3 +129,68 @@ jobs:
           set -euo pipefail
           test -z "${MOEX_TOKEN:-}"
           echo "MOEX_TOKEN is not configured; this validation uses public iss.moex.com only."
+
+
+      - name: Inspect public SecuritiesListing DBF schema and session flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --insecure --fail --silent --show-error --location --max-time 90 \
+            'https://iss.moex.com/file/stock_boardsecid/SL.ZIP' -o /tmp/SL.ZIP
+          python3 - <<'PY'
+          import collections, json, struct, zipfile
+
+          with zipfile.ZipFile('/tmp/SL.ZIP') as archive:
+              names=[n for n in archive.namelist() if n.lower().endswith('.dbf')]
+              if len(names) != 1:
+                  raise SystemExit(f'Expected one DBF member, found {names}')
+              raw=archive.read(names[0])
+
+          if len(raw) < 33:
+              raise SystemExit('DBF is too short')
+          record_count=struct.unpack_from('<I', raw, 4)[0]
+          header_length=struct.unpack_from('<H', raw, 8)[0]
+          record_length=struct.unpack_from('<H', raw, 10)[0]
+          fields=[]
+          offset=32
+          while offset < header_length and raw[offset] != 0x0D:
+              descriptor=raw[offset:offset+32]
+              if len(descriptor) != 32:
+                  raise SystemExit('Truncated DBF field descriptor')
+              name=descriptor[:11].split(b'\\0',1)[0].decode('ascii', 'replace')
+              fields.append({'name':name,'type':chr(descriptor[11]),'length':descriptor[16],'decimals':descriptor[17]})
+              offset += 32
+          if not fields or header_length + record_count * record_length > len(raw):
+              raise SystemExit('Invalid DBF header or record bounds')
+          expected=1 + sum(f['length'] for f in fields)
+          if expected != record_length:
+              raise SystemExit(f'Record length mismatch: header={record_length}, fields={expected}')
+          print('DBF_SCHEMA=', json.dumps({
+              'member':names[0], 'record_count':record_count, 'header_length':header_length,
+              'record_length':record_length, 'fields':fields
+          }, ensure_ascii=False))
+          counters={f['name']:collections.Counter() for f in fields}
+          samples=[]
+          for index in range(record_count):
+              start=header_length + index*record_length
+              record=raw[start:start+record_length]
+              if record[0:1] == b'*':
+                  continue
+              cursor=1
+              row={}
+              for field in fields:
+                  size=field['length']
+                  value=record[cursor:cursor+size].decode('cp1251','replace').strip()
+                  cursor += size
+                  row[field['name']]=value
+                  counters[field['name']][value] += 1
+              if len(samples) < 8:
+                  samples.append(row)
+          print('DBF_SAMPLE_ROWS=', json.dumps(samples, ensure_ascii=False))
+          for field, counts in counters.items():
+              if any(token in field.upper() for token in ('SESSION','MORNING','EVENING','WEEKEND','TRADE','BOARD','SECURITY')):
+                  print('DBF_DISTINCT=', json.dumps({
+                      'field':field, 'distinct_count':len(counts),
+                      'top_values':counts.most_common(20)
+                  }, ensure_ascii=False))
+          PY
