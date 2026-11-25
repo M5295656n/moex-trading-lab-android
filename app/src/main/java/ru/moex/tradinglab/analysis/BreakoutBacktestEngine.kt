@@ -262,24 +262,24 @@ object BreakoutBacktestEngine {
         return result
     }
 
-    private fun calculateQuantity(
+    internal fun calculateQuantity(
         cash: Double,
         entryPrice: Double,
         stopDistance: Double,
         config: BacktestConfig
     ): Int {
         val slippage = config.slippageBasisPointsPerSide / 10_000.0
-        val estimatedExitPrice = max(entryPrice - stopDistance, 0.0)
-        val estimatedCostPerUnit = stopDistance +
+        // entryPrice already includes buy-side slippage; apply slippage only to the estimated exit.
+        val estimatedExitPrice = max(entryPrice - stopDistance, 0.0) * (1.0 - slippage)
+        val estimatedCostPerUnit = (entryPrice - estimatedExitPrice) +
             entryPrice * config.commissionRatePerSide +
-            estimatedExitPrice * config.commissionRatePerSide +
-            entryPrice * slippage +
-            estimatedExitPrice * slippage
+            estimatedExitPrice * config.commissionRatePerSide
         if (!estimatedCostPerUnit.isFinite() || estimatedCostPerUnit <= 0.0) return 0
         val riskBudget = cash * config.riskFraction
         val riskLimited = floor(riskBudget / estimatedCostPerUnit).toInt().coerceAtLeast(0)
+        // entryPrice already includes buy-side slippage, so do not charge it twice here.
         val affordabilityLimited = floor(
-            cash / (entryPrice * (1.0 + slippage) * (1.0 + config.commissionRatePerSide))
+            cash / (entryPrice * (1.0 + config.commissionRatePerSide))
         ).toInt().coerceAtLeast(0)
         val raw = min(riskLimited, affordabilityLimited)
         return (raw / config.lotSize) * config.lotSize
