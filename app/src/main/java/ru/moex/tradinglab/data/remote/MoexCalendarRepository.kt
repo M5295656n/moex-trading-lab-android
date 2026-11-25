@@ -125,7 +125,9 @@ class MoexCalendarRepository(private val client: MoexIssTableClient) {
                 )
             }
 
-            val fingerprint = page.map { row ->\n                row.toSortedMap().mapValues { (_, value) -> value?.toString() }\n            }.toString()
+            val fingerprint = page.map { row ->
+                row.toSortedMap().mapValues { (_, value) -> value?.toString() }
+            }.toString()
             if (!seenPages.add(fingerprint)) {
                 throw MoexIssException.InvalidResponse(
                     "MOEX calendar returned a repeated page; completeness is unknown"
