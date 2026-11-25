@@ -189,9 +189,6 @@ fun BacktestScreen(dao: MarketDataDao) {
                                     )
                                 )
                             } catch (error: Exception) {
-                                result = BacktestRunResult.Rejected(
-                                    error.message ?: error.javaClass.simpleName
-                                ).let { null }
                                 inputError = "Не удалось выполнить тест: ${error.message ?: error.javaClass.simpleName}"
                             } finally {
                                 isRunning = false
