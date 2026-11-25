@@ -37,6 +37,7 @@ import ru.moex.tradinglab.data.remote.MoexCalendarRepository
 import ru.moex.tradinglab.data.sync.MoexDailyHistoryCoverageVerifier
 import ru.moex.tradinglab.data.sync.MoexMarketDataSync
 import ru.moex.tradinglab.data.sync.HistoryVerificationResult
+import ru.moex.tradinglab.util.MoexMarketClock
 import java.time.LocalDate
 import java.util.Locale
 
@@ -191,7 +192,7 @@ fun BacktestScreen(
                         if (instrument.market != "SHARES") {
                             inputError = "Этот тест пока поддерживает только акции."
                         } else if (startDate == null || endDate == null || endDate.isBefore(startDate) ||
-                            endDate.isAfter(LocalDate.now())
+                            endDate.isAfter(MoexMarketClock.today())
                         ) {
                             inputError = "Укажите корректный диапазон дат: конец не раньше начала и не позже сегодняшнего дня."
                         } else {
