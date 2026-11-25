@@ -141,9 +141,20 @@ class MoexFuturesSpecificationRepositoryTest {
             asOfDate = LocalDate.of(2026, 12, 18),
             securitiesRows = listOf(securityRow().toMutableMap().apply {
                 this["END_DATE"] = "2026-12-17"
+                this["REFERENCE_DATE"] = "2026-12-18"
+                this["DOC_DATE"] = "2026-12-18 10:30:00"
+                this["EFFECTIVE_DATE"] = "2026-12-18"
             }),
-            paramsRows = listOf(paramsRow()),
-            risksRows = listOf(riskRow())
+            paramsRows = listOf(paramsRow().toMutableMap().apply {
+                this["REFERENCE_DATE"] = "2026-12-18"
+                this["DOC_DATE"] = "2026-12-18 10:30:00"
+                this["EFFECTIVE_DATE"] = "2026-12-18"
+            }),
+            risksRows = listOf(riskRow().toMutableMap().apply {
+                this["REFERENCE_DATE"] = "2026-12-18"
+                this["DOC_DATE"] = "2026-12-18 10:30:00"
+                this["EFFECTIVE_DATE"] = "2026-12-18"
+            })
         )
         assertTrue(result is FuturesSpecificationLoadResult.Rejected)
         assertTrue((result as FuturesSpecificationLoadResult.Rejected).reason.contains("завершил торги"))
