@@ -25,12 +25,14 @@ import ru.moex.tradinglab.data.remote.MoexIssDataRepository
 import ru.moex.tradinglab.data.remote.MoexFuturesSpecificationRepository
 import ru.moex.tradinglab.data.remote.MoexPublicFuturesCatalogRepository
 import ru.moex.tradinglab.data.sync.MoexMarketDataSync
+import ru.moex.tradinglab.ui.BacktestScreen
 import ru.moex.tradinglab.ui.ChartScreen
 import ru.moex.tradinglab.ui.MarketDataDiagnosticsScreen
 import ru.moex.tradinglab.ui.theme.MoexTradingLabTheme
 
 private enum class MainTab(val title: String) {
     CHART("График"),
+    BACKTEST("Тест"),
     DATA("Данные")
 }
 
@@ -99,7 +101,15 @@ private fun TradingLabRoot(
                         NavigationBarItem(
                             selected = selectedTab == index,
                             onClick = { selectedTab = index },
-                            icon = { Text(if (tab == MainTab.CHART) "▥" else "☷") },
+                            icon = {
+                                Text(
+                                    when (tab) {
+                                        MainTab.CHART -> "▥"
+                                        MainTab.BACKTEST -> "◷"
+                                        MainTab.DATA -> "☷"
+                                    }
+                                )
+                            },
                             label = { Text(tab.title) }
                         )
                     }
@@ -121,6 +131,7 @@ private fun TradingLabRoot(
                             publicFuturesCatalog = publicFuturesCatalog,
                             onOpenDiagnostics = { selectedTab = MainTab.DATA.ordinal }
                         )
+                        MainTab.BACKTEST -> BacktestScreen(dao = dao)
                         MainTab.DATA -> MarketDataDiagnosticsScreen(
                             dao = dao,
                             sync = sync
