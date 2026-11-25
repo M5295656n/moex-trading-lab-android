@@ -193,6 +193,8 @@ jobs:
               sid=row.get('SECURITYID','')
               if sid in {'SBER','GAZP','LKOH','YDEX','T'} and len(selected) < 100:
                   selected.append({k:row.get(k,'') for k in ('TRADEDATE','TRDSESDATE','BOARDID','SECURITYID','EVENINGSES','WEEKENDSES','MORNINGSES')})
+              if row.get('BOARDID') == 'TQBR' and sid in {'SBER','GAZP','LKOH','YDEX','T'}:
+                  targeted_tqbr.append({k:row.get(k,'') for k in ('TRADEDATE','TRDSESDATE','BOARDID','SECURITYID','BOARDNAME','EVENINGSES','WEEKENDSES','MORNINGSES')})
               flag_combinations[(row.get('MORNINGSES',''),row.get('EVENINGSES',''),row.get('WEEKENDSES',''))] += 1
           print('DBF_SAMPLE_ROWS=', json.dumps(samples, ensure_ascii=False))
           print('DBF_SESSION_FLAG_COMBINATIONS=', json.dumps([
