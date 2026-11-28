@@ -104,4 +104,55 @@ class TradingLabDatabaseMigrationTest {
 
         assertEquals(3, database.openHelper.readableDatabase.version)
     }
+
+    @Test
+    fun migrationFromRealRoomVersion3SchemaCreatesListingTablesAndPreservesRows() {
+        val fixtureName = "migration-v3-fixture.db"
+        context.deleteDatabase(fixtureName)
+        val legacy = SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(fixtureName), null)
+        legacy.execSQL("""
+            CREATE TABLE IF NOT EXISTS instruments (
+                secId TEXT NOT NULL PRIMARY KEY,
+                shortName TEXT NOT NULL,
+                instrumentType TEXT NOT NULL,
+                engine TEXT NOT NULL,
+                market TEXT NOT NULL,
+                source TEXT NOT NULL,
+                updatedAtEpochMillis INTEGER NOT NULL
+            )
+        """.trimIndent())
+        legacy.execSQL("INSERT INTO instruments VALUES ('GAZP', 'Газпром', 'SHARES', 'stock', 'shares', 'MOEX ISS', 321)")
+        legacy.version = 1
+        legacy.close()
+
+        val version3 = Room.databaseBuilder(context, TradingLabDatabase::class.java, fixtureName)
+            .addMigrations(TradingLabDatabase.MIGRATION_1_2, TradingLabDatabase.MIGRATION_2_3)
+            .build()
+        assertEquals(3, version3.openHelper.readableDatabase.version)
+        version3.close()
+
+        val version4 = Room.databaseBuilder(context, TradingLabDatabase::class.java, fixtureName)
+            .addMigrations(
+                TradingLabDatabase.MIGRATION_1_2,
+                TradingLabDatabase.MIGRATION_2_3,
+                TradingLabDatabase.MIGRATION_3_4
+            )
+            .build()
+        val db = version4.openHelper.readableDatabase
+        assertEquals(4, db.version)
+
+        val legacyRows = db.query("SELECT secId FROM instruments WHERE secId = 'GAZP'")
+        assertEquals(1, legacyRows.count)
+        legacyRows.close()
+
+        val snapshots = db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'securities_listing_snapshots'")
+        assertEquals(1, snapshots.count)
+        snapshots.close()
+        val entries = db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'securities_listing_entries'")
+        assertEquals(1, entries.count)
+        entries.close()
+        version4.close()
+        context.deleteDatabase(fixtureName)
+    }
+
 }

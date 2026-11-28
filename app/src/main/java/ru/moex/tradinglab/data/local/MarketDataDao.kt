@@ -27,6 +27,9 @@ interface MarketDataDao {
     @Query("SELECT * FROM market_instruments WHERE instrumentId = :instrumentId LIMIT 1")
     suspend fun getInstrument(instrumentId: String): MarketInstrumentEntity?
 
+    @Query("SELECT secId, boardId FROM market_instruments WHERE market = 'SHARES' AND boardId IS NOT NULL")
+    suspend fun getShareInstrumentBoardKeys(): List<InstrumentBoardKey>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertInstrumentsIfAbsent(items: List<MarketInstrumentEntity>)
 

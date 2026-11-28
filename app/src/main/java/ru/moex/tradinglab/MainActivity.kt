@@ -25,7 +25,9 @@ import ru.moex.tradinglab.data.remote.MoexIssDataRepository
 import ru.moex.tradinglab.data.remote.MoexCalendarRepository
 import ru.moex.tradinglab.data.remote.MoexFuturesSpecificationRepository
 import ru.moex.tradinglab.data.remote.MoexPublicFuturesCatalogRepository
+import ru.moex.tradinglab.data.remote.SecuritiesListingArchiveClient
 import ru.moex.tradinglab.data.sync.MoexMarketDataSync
+import ru.moex.tradinglab.data.sync.SecuritiesListingSync
 import ru.moex.tradinglab.ui.BacktestScreen
 import ru.moex.tradinglab.ui.ChartScreen
 import ru.moex.tradinglab.ui.MarketDataDiagnosticsScreen
@@ -58,9 +60,18 @@ class MainActivity : ComponentActivity() {
         )
             .addMigrations(
                 TradingLabDatabase.MIGRATION_1_2,
-                TradingLabDatabase.MIGRATION_2_3
+                TradingLabDatabase.MIGRATION_2_3,
+                TradingLabDatabase.MIGRATION_3_4
             )
             .build()
+    }
+
+    private val securitiesListingSync by lazy {
+        SecuritiesListingSync(
+            archiveSource = SecuritiesListingArchiveClient(),
+            marketDataDao = database.marketDataDao(),
+            securitiesListingDao = database.securitiesListingDao()
+        )
     }
 
     private val marketDataSync by lazy {
@@ -79,7 +90,8 @@ class MainActivity : ComponentActivity() {
                     sync = marketDataSync,
                     calendar = calendarRepository,
                     futuresSpecifications = futuresSpecifications,
-                    publicFuturesCatalog = publicFuturesCatalog
+                    publicFuturesCatalog = publicFuturesCatalog,
+                    securitiesListingSync = securitiesListingSync
                 )
             }
         }
@@ -92,7 +104,8 @@ private fun TradingLabRoot(
     sync: MoexMarketDataSync,
     calendar: MoexCalendarRepository,
     futuresSpecifications: MoexFuturesSpecificationRepository,
-    publicFuturesCatalog: MoexPublicFuturesCatalogRepository
+    publicFuturesCatalog: MoexPublicFuturesCatalogRepository,
+    securitiesListingSync: SecuritiesListingSync
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(MainTab.CHART.ordinal) }
     val dao = database.marketDataDao()
@@ -143,7 +156,9 @@ private fun TradingLabRoot(
                         )
                         MainTab.DATA -> MarketDataDiagnosticsScreen(
                             dao = dao,
-                            sync = sync
+                            sync = sync,
+                            securitiesListingDao = database.securitiesListingDao(),
+                            securitiesListingSync = securitiesListingSync
                         )
                     }
                 }

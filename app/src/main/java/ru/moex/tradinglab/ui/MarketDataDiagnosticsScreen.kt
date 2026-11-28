@@ -37,10 +37,13 @@ import ru.moex.tradinglab.data.local.CatalogSyncEntity
 import ru.moex.tradinglab.data.local.HistoryCoverageEntity
 import ru.moex.tradinglab.data.local.MarketDataDao
 import ru.moex.tradinglab.data.local.MarketInstrumentEntity
+import ru.moex.tradinglab.data.local.SecuritiesListingDao
 import ru.moex.tradinglab.data.remote.HistoryCompleteness
 import ru.moex.tradinglab.data.remote.IssInstrument
 import ru.moex.tradinglab.data.remote.MoexMarket
 import ru.moex.tradinglab.data.sync.MoexMarketDataSync
+import ru.moex.tradinglab.data.sync.SecuritiesListingSync
+import ru.moex.tradinglab.data.sync.SecuritiesListingSyncResult
 import java.lang.reflect.Type
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -49,7 +52,9 @@ import java.util.Locale
 @Composable
 fun MarketDataDiagnosticsScreen(
     dao: MarketDataDao,
-    sync: MoexMarketDataSync
+    sync: MoexMarketDataSync,
+    securitiesListingDao: SecuritiesListingDao,
+    securitiesListingSync: SecuritiesListingSync
 ) {
     val instruments by dao.observeInstruments().collectAsState(initial = emptyList())
     val catalogStates by dao.observeCatalogSync().collectAsState(initial = emptyList())
@@ -109,6 +114,13 @@ fun MarketDataDiagnosticsScreen(
                 }
             }
 
+            item(key = "securities-listing-snapshot") {
+                SecuritiesListingSnapshotSection(
+                    dao = securitiesListingDao,
+                    sync = securitiesListingSync
+                )
+            }
+
             items(MoexMarket.entries.toList(), key = { it.name }) { market ->
                 val saved = catalogStates.firstOrNull { it.market == market.name }
                 val count = instruments.count { it.market == market.name }
@@ -151,6 +163,82 @@ fun MarketDataDiagnosticsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun SecuritiesListingSnapshotSection(
+    dao: SecuritiesListingDao,
+    sync: SecuritiesListingSync
+) {
+    val snapshots by dao.observeSnapshots().collectAsState(initial = emptyList())
+    val latest = snapshots.firstOrNull()
+    val scope = rememberCoroutineScope()
+    var isLoading by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Text("Снимок допуска к торговым сессиям", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Публичный архив MOEX для акций. Сохраняются только пары SECID/BOARDID из вашего локального каталога. Это не календарь торгов и не доказательство наличия свечи.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Button(
+                onClick = {
+                    scope.launch {
+                        isLoading = true
+                        message = null
+                        try {
+                            message = when (val result = sync.syncLatestSnapshot()) {
+                                SecuritiesListingSyncResult.NoShareCatalog ->
+                                    "Сначала загрузите каталог акций MOEX."
+                                is SecuritiesListingSyncResult.Saved ->
+                                    "Снимок ${result.tradeDate}: сохранено ${result.storedEntries} строк; вне локального каталога ${result.filteredOutEntries}; исходных записей ${result.declaredRecords}; статус ${securitiesListingStatusLabel(result.status)}."
+                            }
+                        } catch (error: Exception) {
+                            message = "Не удалось обновить снимок: ${error.message ?: error.javaClass.simpleName}. Предыдущий снимок сохранён."
+                        } finally {
+                            isLoading = false
+                        }
+                    }
+                },
+                enabled = !isLoading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Загрузить текущий снимок")
+                }
+            }
+            if (latest == null) {
+                Text("Снимок ещё не загружался.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                Text("Дата торгов: ${latest.tradeDate}", style = MaterialTheme.typography.bodySmall)
+                Text("Сохранено пар: ${latest.storedEntryCount}", style = MaterialTheme.typography.bodySmall)
+                Text("Исключено вне каталога: ${latest.filteredOutEntryCount}", style = MaterialTheme.typography.bodySmall)
+                Text("Всего записей в DBF: ${latest.declaredRecordCount}", style = MaterialTheme.typography.bodySmall)
+                Text("Неизвестные флаги: ${latest.unknownFlagCount} · дубликаты: ${latest.duplicateRecordCount}", style = MaterialTheme.typography.bodySmall)
+                Text("Статус: ${securitiesListingStatusLabel(latest.status)}", style = MaterialTheme.typography.bodySmall)
+                Text("Получено: ${formatTimestamp(latest.fetchedAtEpochMillis)}", style = MaterialTheme.typography.bodySmall)
+                Text("SHA-256: ${latest.sha256.take(16)}…", style = MaterialTheme.typography.labelSmall)
+            }
+            message?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+private fun securitiesListingStatusLabel(status: String): String = when (status) {
+    "COMPLETE" -> "полный разбор"
+    "COMPLETE_WITH_DUPLICATES" -> "есть одинаковые дубликаты"
+    "PARTIAL_FLAGS" -> "есть неизвестные значения флагов"
+    "NO_LOCAL_MATCHES" -> "нет совпадений с локальным каталогом"
+    else -> status
 }
 
 @Composable
